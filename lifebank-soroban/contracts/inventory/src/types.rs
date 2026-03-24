@@ -50,6 +50,8 @@ pub enum BloodStatus {
     Expired,
     /// Compromised due to 3 consecutive temperature violations - unsafe for use
     Compromised,
+    /// Formally disposed of after expiry or compromise — permanent end-of-life
+    Disposed,
 }
 
 /// Complete blood unit record stored in the inventory contract
@@ -140,11 +142,15 @@ impl BloodType {
 }
 
 impl BloodStatus {
-    /// Check if this status is a terminal state
+    /// Check if this status is a terminal state.
+    ///
+    /// Terminal states cannot transition to any other status.
+    /// `Disposed` is the true physical end-of-life; `Expired` and `Compromised`
+    /// units may still transition to `Disposed` before being considered fully done.
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            BloodStatus::Delivered | BloodStatus::Expired | BloodStatus::Compromised
+            BloodStatus::Delivered | BloodStatus::Disposed | BloodStatus::Compromised
         )
     }
 }
@@ -156,20 +162,23 @@ impl BloodStatus {
 ///   Available ──► Reserved ──► InTransit ──► Delivered (terminal)
 ///       │             │             │
 ///       ▼             ▼             ▼
-///    Expired       Expired       Expired (terminal)
+///    Expired       Expired       Expired ──► Disposed (terminal)
 ///
-///   Additionally, Reserved can transition back to Available (cancellation).
+///   Compromised ──► Disposed (terminal)
+///   Reserved can also cancel back to Available.
 ///
 /// Valid transitions:
-///   - Available  → Reserved   (unit is reserved for a request)
-///   - Available  → Expired    (unit expired before being reserved)
-///   - Reserved   → InTransit  (unit is dispatched for delivery)
-///   - Reserved   → Available  (reservation cancelled, unit returned to pool)
-///   - Reserved   → Expired    (unit expired while reserved)
-///   - InTransit  → Delivered  (unit successfully delivered)
-///   - InTransit  → Expired    (unit expired during transport)
-///   - Delivered  → (none)     (terminal state — no further transitions)
-///   - Expired    → (none)     (terminal state — no further transitions)
+///   - Available   → Reserved   (unit is reserved for a request)
+///   - Available   → Expired    (unit expired before being reserved)
+///   - Reserved    → InTransit  (unit is dispatched for delivery)
+///   - Reserved    → Available  (reservation cancelled, unit returned to pool)
+///   - Reserved    → Expired    (unit expired while reserved)
+///   - InTransit   → Delivered  (unit successfully delivered)
+///   - InTransit   → Expired    (unit expired during transport)
+///   - Expired     → Disposed   (formally disposed of after expiry)
+///   - Compromised → Disposed   (formally disposed of after compromise)
+///   - Delivered   → (none)     (terminal state — no further transitions)
+///   - Disposed    → (none)     (terminal state — no further transitions)
 ///
 /// All other transitions are invalid and will be rejected. Backwards transitions
 /// (e.g., Delivered → Available, InTransit → Reserved) are explicitly forbidden
@@ -188,6 +197,8 @@ pub fn is_valid_transition(from: &BloodStatus, to: &BloodStatus) -> bool {
             | (Reserved, Expired)
             | (InTransit, Delivered)
             | (InTransit, Expired)
+            | (Expired, Disposed)
+            | (Compromised, Disposed)
     )
 }
 

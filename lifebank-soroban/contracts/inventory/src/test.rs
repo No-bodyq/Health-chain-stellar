@@ -955,3 +955,138 @@ fn test_batch_update_status_invalid_transition() {
         &None,
     );
 }
+
+// ==================== Dispose Tests ====================
+
+#[test]
+fn test_dispose_from_expired_success() {
+    let (env, admin, client, _contract_id) = create_test_contract();
+
+    let bank = admin.clone();
+    let current_time = 1000u64;
+    env.ledger().set_timestamp(current_time);
+
+    let unit_id = client.register_blood(&bank, &BloodType::APositive, &450u32, &None);
+
+    // Expire the unit first
+    client.mark_expired(&unit_id, &admin);
+
+    // Now dispose it
+    let disposed = client.dispose(
+        &unit_id,
+        &admin,
+        &Some(String::from_str(&env, "Disposed after expiry")),
+    );
+
+    assert_eq!(disposed.status, BloodStatus::Disposed);
+
+    // Verify persisted status
+    let stored = client.get_blood_unit(&unit_id);
+    assert_eq!(stored.status, BloodStatus::Disposed);
+}
+
+#[test]
+fn test_dispose_records_history() {
+    let (env, admin, client, _contract_id) = create_test_contract();
+
+    let bank = admin.clone();
+    let current_time = 1000u64;
+    env.ledger().set_timestamp(current_time);
+
+    let unit_id = client.register_blood(&bank, &BloodType::BPositive, &450u32, &None);
+
+    client.mark_expired(&unit_id, &admin);
+    client.dispose(&unit_id, &admin, &None);
+
+    let history = client.get_status_history(&unit_id);
+    // Should have 2 entries: Available->Expired, Expired->Disposed
+    assert_eq!(history.len(), 2);
+
+    let h0 = history.get(0).unwrap();
+    assert_eq!(h0.from_status, BloodStatus::Available);
+    assert_eq!(h0.to_status, BloodStatus::Expired);
+
+    let h1 = history.get(1).unwrap();
+    assert_eq!(h1.from_status, BloodStatus::Expired);
+    assert_eq!(h1.to_status, BloodStatus::Disposed);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #41)")]
+fn test_dispose_from_available_invalid() {
+    let (env, admin, client, _contract_id) = create_test_contract();
+
+    let bank = admin.clone();
+    env.ledger().set_timestamp(1000u64);
+
+    let unit_id = client.register_blood(&bank, &BloodType::APositive, &450u32, &None);
+
+    // Cannot dispose an Available unit directly (must expire first)
+    client.dispose(&unit_id, &admin, &None);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #41)")]
+fn test_dispose_from_reserved_invalid() {
+    let (env, admin, client, _contract_id) = create_test_contract();
+
+    let bank = admin.clone();
+    env.ledger().set_timestamp(1000u64);
+
+    let unit_id = client.register_blood(&bank, &BloodType::APositive, &450u32, &None);
+    client.update_status(&unit_id, &BloodStatus::Reserved, &admin, &None);
+
+    // Cannot dispose a Reserved unit directly
+    client.dispose(&unit_id, &admin, &None);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #41)")]
+fn test_transition_from_disposed_is_invalid() {
+    let (env, admin, client, _contract_id) = create_test_contract();
+
+    let bank = admin.clone();
+    env.ledger().set_timestamp(1000u64);
+
+    let unit_id = client.register_blood(&bank, &BloodType::APositive, &450u32, &None);
+    client.mark_expired(&unit_id, &admin);
+    client.dispose(&unit_id, &admin, &None);
+
+    // Disposed is terminal — no further transitions allowed
+    client.update_status(&unit_id, &BloodStatus::Available, &admin, &None);
+}
+
+#[test]
+fn test_dispose_is_terminal_state_in_type() {
+    assert!(BloodStatus::Disposed.is_terminal());
+    // Expired is no longer terminal — units can still move to Disposed
+    assert!(!BloodStatus::Expired.is_terminal());
+}
+
+#[test]
+fn test_batch_dispose_after_expiry() {
+    let (env, admin, client, _contract_id) = create_test_contract();
+
+    let bank = admin.clone();
+    env.ledger().set_timestamp(1000u64);
+
+    let id1 = client.register_blood(&bank, &BloodType::APositive, &450u32, &None);
+    let id2 = client.register_blood(&bank, &BloodType::BPositive, &450u32, &None);
+
+    client.mark_expired(&id1, &admin);
+    client.mark_expired(&id2, &admin);
+
+    // Batch dispose both expired units
+    let unit_ids = vec![&env, id1, id2];
+    let count = client.batch_update_status(
+        &unit_ids,
+        &BloodStatus::Disposed,
+        &admin,
+        &Some(String::from_str(&env, "Monthly disposal run")),
+    );
+
+    assert_eq!(count, 2);
+    assert_eq!(client.get_blood_unit(&id1).status, BloodStatus::Disposed);
+    assert_eq!(client.get_blood_unit(&id2).status, BloodStatus::Disposed);
+}
+

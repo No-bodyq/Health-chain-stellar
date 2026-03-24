@@ -207,6 +207,10 @@ impl InventoryContract {
         blood_unit.status = new_status;
         storage::set_blood_unit(&env, &blood_unit);
 
+        // Keep status index consistent: remove from old bucket, add to new bucket.
+        storage::remove_from_status_index(&env, unit_id, old_status);
+        storage::add_to_status_index(&env, &blood_unit);
+
         storage::record_status_change(
             &env,
             unit_id,
@@ -258,6 +262,30 @@ impl InventoryContract {
         )
     }
 
+    /// Formally dispose of a blood unit.
+    ///
+    /// Only units in `Expired` or `Compromised` state may be disposed.
+    /// This permanently ends the lifecycle — `Disposed` is a terminal state.
+    ///
+    /// # Arguments
+    /// * `env`           - Contract environment
+    /// * `unit_id`       - ID of the blood unit to dispose
+    /// * `authorized_by` - Address performing the disposal (must be admin)
+    /// * `reason`        - Optional reason / disposal notes
+    ///
+    /// # Errors
+    /// - `NotFound`                - Blood unit with given ID doesn't exist
+    /// - `Unauthorized`            - Caller is not the admin
+    /// - `InvalidStatusTransition` - Unit is not in Expired or Compromised state
+    pub fn dispose(
+        env: Env,
+        unit_id: u64,
+        authorized_by: Address,
+        reason: Option<String>,
+    ) -> Result<BloodUnit, ContractError> {
+        Self::update_status(env, unit_id, BloodStatus::Disposed, authorized_by, reason)
+    }
+
     pub fn batch_update_status(
         env: Env,
         unit_ids: Vec<u64>,
@@ -291,6 +319,10 @@ impl InventoryContract {
             }
             blood_unit.status = new_status;
             storage::set_blood_unit(&env, &blood_unit);
+
+            // Keep status index consistent for each unit.
+            storage::remove_from_status_index(&env, unit_id, old_status);
+            storage::add_to_status_index(&env, &blood_unit);
 
             storage::record_status_change(
                 &env,
