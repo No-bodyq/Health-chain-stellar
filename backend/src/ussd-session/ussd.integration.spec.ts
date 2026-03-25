@@ -5,7 +5,12 @@
  * (Redis mock) to verify multi-step navigation works correctly end-to-end.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { UssdStateMachine, BLOOD_TYPES, VALID_QUANTITIES, BLOOD_BANKS } from './ussd-state-machine.service';
+import {
+  UssdStateMachine,
+  BLOOD_TYPES,
+  VALID_QUANTITIES,
+  BLOOD_BANKS,
+} from './ussd-state-machine.service';
 import { UssdSessionStore, REDIS_CLIENT } from './ussd-session.store';
 import { UssdSession, UssdStep } from './ussd.types';
 
@@ -49,7 +54,8 @@ describe('USSD Integration Tests', () => {
   const buildText = (...inputs: string[]) => inputs.join('*');
 
   // Helper: drive the state machine one step
-  const step = (text: string) => machine.process(SESSION_ID, PHONE, text, createOrder);
+  const step = (text: string) =>
+    machine.process(SESSION_ID, PHONE, text, createOrder);
 
   beforeEach(async () => {
     redis = new InMemoryRedis();
@@ -192,7 +198,9 @@ describe('USSD Integration Tests', () => {
       await step(buildText('+2348012345678', '1234'));
       await step(buildText('+2348012345678', '1234', '1'));
       await step(buildText('+2348012345678', '1234', '1', '1'));
-      const res = await step(buildText('+2348012345678', '1234', '1', '1', 'xyz'));
+      const res = await step(
+        buildText('+2348012345678', '1234', '1', '1', 'xyz'),
+      );
       expect(res.type).toBe('CON');
       expect(res.message).toContain('Invalid choice');
     });
@@ -204,7 +212,9 @@ describe('USSD Integration Tests', () => {
       await step(buildText('+2348012345678', '1234', '1'));
       await step(buildText('+2348012345678', '1234', '1', '1'));
       await step(buildText('+2348012345678', '1234', '1', '1', '1'));
-      const res = await step(buildText('+2348012345678', '1234', '1', '1', '1', '9'));
+      const res = await step(
+        buildText('+2348012345678', '1234', '1', '1', '1', '9'),
+      );
       expect(res.type).toBe('CON');
       expect(res.message).toContain('Invalid choice');
     });
@@ -218,7 +228,9 @@ describe('USSD Integration Tests', () => {
       await step(buildText('+2348012345678', '1234', '1'));
       await step(buildText('+2348012345678', '1234', '1', '1'));
       await step(buildText('+2348012345678', '1234', '1', '1', '1'));
-      const res = await step(buildText('+2348012345678', '1234', '1', '1', '1', '2'));
+      const res = await step(
+        buildText('+2348012345678', '1234', '1', '1', '1', '2'),
+      );
       expect(res.type).toBe('CON');
       expect(res.message).toContain('blood type');
     });

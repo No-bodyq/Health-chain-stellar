@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InventoryStockEntity } from './entities/inventory-stock.entity';
@@ -40,12 +44,20 @@ export class InventoryService {
 
     const entity = existing
       ? this.inventoryRepo.merge(existing, {
-          availableUnits: Number(createInventoryDto.availableUnits ?? createInventoryDto.quantity ?? 0),
+          availableUnits: Number(
+            createInventoryDto.availableUnits ??
+              createInventoryDto.quantity ??
+              0,
+          ),
         })
       : this.inventoryRepo.create({
           bloodBankId: createInventoryDto.bloodBankId,
           bloodType: createInventoryDto.bloodType,
-          availableUnits: Number(createInventoryDto.availableUnits ?? createInventoryDto.quantity ?? 0),
+          availableUnits: Number(
+            createInventoryDto.availableUnits ??
+              createInventoryDto.quantity ??
+              0,
+          ),
         });
 
     const data = await this.inventoryRepo.save(entity);
@@ -125,7 +137,9 @@ export class InventoryService {
     quantity: number,
   ): Promise<void> {
     if (quantity <= 0) {
-      throw new ConflictException('Requested quantity must be greater than zero.');
+      throw new ConflictException(
+        'Requested quantity must be greater than zero.',
+      );
     }
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -190,9 +204,14 @@ export class InventoryService {
   async getInventoryStats(hospitalId?: string) {
     const where = hospitalId ? { bloodBankId: hospitalId } : {};
     const items = await this.inventoryRepo.find({ where });
-    
-    const totalUnits = items.reduce((sum, item) => sum + item.availableUnits, 0);
-    const lowStockCount = items.filter(item => item.availableUnits <= 10).length;
+
+    const totalUnits = items.reduce(
+      (sum, item) => sum + item.availableUnits,
+      0,
+    );
+    const lowStockCount = items.filter(
+      (item) => item.availableUnits <= 10,
+    ).length;
 
     return {
       message: 'Inventory stats retrieved successfully',

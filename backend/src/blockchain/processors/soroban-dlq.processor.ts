@@ -5,7 +5,7 @@ import type { SorobanTxJob } from '../types/soroban-tx.types';
 
 /**
  * Dead Letter Queue Processor
- * 
+ *
  * Handles transactions that have permanently failed after exhausting all retries.
  * Captures full error context for audit trail and alerts admins.
  */
@@ -16,13 +16,13 @@ export class SorobanDlqProcessor {
   /**
    * Process dead letter job.
    * Called when a transaction exceeds max retries and is moved to DLQ.
-   * 
+   *
    * Responsibilities:
    * 1. Log full error context
    * 2. Persist DLQ entry to database for audit trail
    * 3. Alert admins about permanent failure
    * 4. Enable manual recovery workflows
-   * 
+   *
    * @param job - Failed transaction job
    */
   @Process()
@@ -60,7 +60,7 @@ export class SorobanDlqProcessor {
 
   /**
    * Persist DLQ entry to database for audit trail.
-   * 
+   *
    * TODO: Implement database persistence
    * Should store:
    * - Full job data and error context
@@ -68,13 +68,13 @@ export class SorobanDlqProcessor {
    * - Number of attempts made
    * - Stack trace for debugging
    * - Metadata for correlation
-   * 
+   *
    * This enables:
    * - Audit trail for compliance
    * - Manual recovery workflows
    * - Pattern analysis for systemic issues
    * - Admin dashboard for monitoring
-   * 
+   *
    * @param dlqEntry - DLQ entry to persist
    */
   private async persistDlqEntry(dlqEntry: any): Promise<void> {
@@ -97,7 +97,7 @@ export class SorobanDlqProcessor {
 
   /**
    * Notify admins about permanently failed transaction.
-   * 
+   *
    * TODO: Implement admin notification system
    * Options:
    * - Email notification to ops team
@@ -105,14 +105,14 @@ export class SorobanDlqProcessor {
    * - PagerDuty incident creation
    * - SMS for critical failures
    * - Monitoring system integration (Datadog, New Relic)
-   * 
+   *
    * Should include:
    * - Job ID and contract method
    * - Error message and stack trace
    * - Number of attempts made
    * - Metadata for context
    * - Link to admin dashboard for recovery
-   * 
+   *
    * @param dlqEntry - DLQ entry with failure details
    */
   private async notifyAdmins(dlqEntry: any): Promise<void> {

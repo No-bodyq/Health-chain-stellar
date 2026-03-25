@@ -34,4 +34,4 @@ import { UsersModule } from '../users/users.module';
   ],
   exports: [InventoryService, InventoryForecastingService],
 })
-export class InventoryModule { }
+export class InventoryModule {}

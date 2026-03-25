@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { UserActivityService } from '../user-activity/user-activity.service';
+import { ActivityType } from '../user-activity/enums/activity-type.enum';
 
 @Injectable()
 export class UsersService {
-  constructor() {}
+  constructor(private readonly userActivityService: UserActivityService) {}
 
   async findAll() {
     // TODO: Implement find all users logic
@@ -20,7 +22,27 @@ export class UsersService {
     };
   }
 
-  async update(id: string, updateUserDto: any) {
+  async update(
+    id: string,
+    updateUserDto: any,
+    context?: {
+      actorId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+  ) {
+    await this.userActivityService.logActivity({
+      userId: context?.actorId ?? id,
+      activityType: ActivityType.PROFILE_UPDATED,
+      description: `Profile updated for user ${id}`,
+      metadata: {
+        targetUserId: id,
+        changedFields: Object.keys(updateUserDto ?? {}),
+      },
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+
     // TODO: Implement update user logic
     return {
       message: 'User updated successfully',

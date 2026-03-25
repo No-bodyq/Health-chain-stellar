@@ -45,11 +45,11 @@ export class SorobanIndexerService {
       for (const event of unprocessedEvents) {
         try {
           await this.processEvent(event);
-          
+
           // Mark as processed
           event.processed = true;
           await this.eventRepository.save(event);
-          
+
           this.logger.debug(`Processed event: ${event.id}`);
         } catch (error) {
           this.logger.error(
@@ -76,7 +76,7 @@ export class SorobanIndexerService {
     try {
       // Get trails that need updating (older than 10 minutes)
       const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      
+
       const trailsToUpdate = await this.trailRepository
         .createQueryBuilder('trail')
         .where('trail.lastSyncedAt IS NULL OR trail.lastSyncedAt < :time', {

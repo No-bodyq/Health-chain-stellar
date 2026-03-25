@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -18,10 +19,14 @@ import { MapsModule } from './maps/maps.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
+import { BloodUnitsModule } from './blood-units/blood-units.module';
 import { BullModule } from '@nestjs/bullmq';
 import { BullModule as BullClassicModule } from '@nestjs/bull';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { ScheduleModule } from '@nestjs/schedule';
+import { UserActivityModule } from './user-activity/user-activity.module';
+import { ActivityLoggingInterceptor } from './user-activity/interceptors/activity-logging.interceptor';
 import { RedisModule } from './redis/redis.module';
 import { REDIS_CLIENT } from './redis/redis.constants';
 import { throttleGetTracker } from './throttler/throttle-tracker.util';
@@ -32,6 +37,7 @@ import { throttleGetTracker } from './throttler/throttle-tracker.util';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -78,6 +84,7 @@ import { throttleGetTracker } from './throttler/throttle-tracker.util';
     RidersModule,
     DispatchModule,
     MapsModule,
+    BloodUnitsModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -101,6 +108,7 @@ import { throttleGetTracker } from './throttler/throttle-tracker.util';
     NotificationsModule,
     BlockchainModule,
     OrganizationsModule,
+    UserActivityModule,
   ],
   controllers: [AppController],
   providers: [
@@ -113,6 +121,7 @@ import { throttleGetTracker } from './throttler/throttle-tracker.util';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     /** Permission enforcement applied globally; use @RequirePermissions() to specify */
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_INTERCEPTOR, useClass: ActivityLoggingInterceptor },
   ],
 })
 export class AppModule {}

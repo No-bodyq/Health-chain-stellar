@@ -1,10 +1,14 @@
 /// <reference types="jest" />
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { BlockchainController } from '../controllers/blockchain.controller';
 import { SorobanService } from '../services/soroban.service';
 import { AdminGuard } from '../guards/admin.guard';
-import { SorobanTxJob, QueueMetrics, SorobanTxResult } from '../types/soroban-tx.types';
+import {
+  SorobanTxJob,
+  QueueMetrics,
+  SorobanTxResult,
+} from '../types/soroban-tx.types';
 
 describe('BlockchainController', () => {
   let controller: BlockchainController;

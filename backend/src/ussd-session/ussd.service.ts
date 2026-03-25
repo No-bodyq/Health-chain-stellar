@@ -28,7 +28,9 @@ export class UssdService {
   async handleSession(request: UssdRequest): Promise<UssdResponse> {
     const { sessionId, phoneNumber, text } = request;
 
-    this.logger.debug(`USSD session ${sessionId} | phone ${phoneNumber} | text "${text}"`);
+    this.logger.debug(
+      `USSD session ${sessionId} | phone ${phoneNumber} | text "${text}"`,
+    );
 
     return this.stateMachine.process(sessionId, phoneNumber, text, (session) =>
       this.placeOrder(session),
@@ -36,7 +38,12 @@ export class UssdService {
   }
 
   private async placeOrder(session: UssdSession): Promise<void> {
-    if (!session.userId || !session.selectedBloodType || !session.selectedQuantity || !session.selectedBloodBankId) {
+    if (
+      !session.userId ||
+      !session.selectedBloodType ||
+      !session.selectedQuantity ||
+      !session.selectedBloodBankId
+    ) {
       throw new Error('Incomplete session data for order creation');
     }
 

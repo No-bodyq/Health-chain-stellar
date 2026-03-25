@@ -7,6 +7,8 @@ import { RoleEntity } from './entities/role.entity';
 import { RolePermissionEntity } from './entities/role-permission.entity';
 import { Permission } from './enums/permission.enum';
 import { UserRole } from './enums/user-role.enum';
+import { UserActivityService } from '../user-activity/user-activity.service';
+import { ActivityType } from '../user-activity/enums/activity-type.enum';
 
 /** Redis TTL for role-permission entries (5 minutes) */
 const CACHE_TTL_SECONDS = 300;
@@ -23,6 +25,7 @@ export class PermissionsService {
     private readonly rolePermissionRepository: Repository<RolePermissionEntity>,
     @Inject(REDIS_CLIENT)
     private readonly redisClient: Redis,
+    private readonly userActivityService: UserActivityService,
   ) {}
 
   /**
@@ -97,6 +100,11 @@ export class PermissionsService {
   async setPermissionsForRole(
     role: UserRole,
     permissions: Permission[],
+    actorId?: string,
+    context?: {
+      ipAddress?: string;
+      userAgent?: string;
+    },
   ): Promise<RoleEntity> {
     let roleEntity = await this.roleRepository.findOne({
       where: { name: role },
@@ -110,13 +118,26 @@ export class PermissionsService {
     // Replace permission list
     const permissionEntities = permissions.map((permission) => {
       const entity = this.rolePermissionRepository.create({ permission });
-      entity.role = roleEntity as RoleEntity;
+      entity.role = roleEntity;
       return entity;
     });
 
     roleEntity.permissions = permissionEntities;
     const saved = await this.roleRepository.save(roleEntity);
     await this.invalidateRoleCache(role);
+
+    await this.userActivityService.logActivity({
+      userId: actorId ?? 'system',
+      activityType: ActivityType.PERMISSION_CHANGED,
+      description: `Permissions updated for role ${role}`,
+      metadata: {
+        role,
+        permissions,
+      },
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+
     return saved;
   }
 }

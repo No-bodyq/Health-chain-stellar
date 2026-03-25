@@ -11,7 +11,7 @@ export class SorobanTxProcessor {
    * Main transaction processor.
    * Handles Soroban contract calls with exponential backoff retry logic.
    * Failed jobs are automatically moved to DLQ after max retries.
-   * 
+   *
    * @param job - Transaction job from queue
    * @returns Transaction result with hash
    * @throws Error to trigger retry or move to DLQ
@@ -32,10 +32,10 @@ export class SorobanTxProcessor {
         idempotencyKey,
       );
 
-      this.logger.log(
-        `Transaction completed: ${job.id} -> ${result}`,
-        { contractMethod, metadata },
-      );
+      this.logger.log(`Transaction completed: ${job.id} -> ${result}`, {
+        contractMethod,
+        metadata,
+      });
 
       return { success: true, transactionHash: result };
     } catch (error) {
@@ -56,7 +56,7 @@ export class SorobanTxProcessor {
   /**
    * Handle job failure with error logging and admin alerts.
    * Called when a job fails and is moved to DLQ.
-   * 
+   *
    * @param jobId - Job ID that permanently failed
    * @param err - Error that caused the failure
    */
@@ -73,7 +73,7 @@ export class SorobanTxProcessor {
   /**
    * Execute Soroban contract call.
    * This is a placeholder for actual Stellar RPC integration.
-   * 
+   *
    * In production, this should:
    * 1. Connect to Stellar RPC endpoint
    * 2. Build transaction envelope with contract call
@@ -81,7 +81,7 @@ export class SorobanTxProcessor {
    * 4. Submit to network
    * 5. Poll for confirmation
    * 6. Return transaction hash
-   * 
+   *
    * @param contractMethod - Contract method name
    * @param args - Contract method arguments
    * @param idempotencyKey - Idempotency key for deduplication
@@ -107,7 +107,7 @@ export class SorobanTxProcessor {
 
   /**
    * Alert admins about permanently failed transaction.
-   * 
+   *
    * @param jobId - Failed job ID
    * @param error - Error that caused failure
    */
@@ -120,9 +120,8 @@ export class SorobanTxProcessor {
     // - Database audit log
     // - Monitoring system (Datadog, New Relic, etc.)
 
-    this.logger.warn(
-      `Admin alert needed for failed job: ${jobId}`,
-      { error: error.message },
-    );
+    this.logger.warn(`Admin alert needed for failed job: ${jobId}`, {
+      error: error.message,
+    });
   }
 }

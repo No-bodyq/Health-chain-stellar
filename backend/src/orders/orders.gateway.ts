@@ -17,7 +17,9 @@ import { Order } from './types/order.types';
   },
   namespace: '/orders',
 })
-export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class OrdersGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
@@ -25,14 +27,18 @@ export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   afterInit(server: Server) {
     this.logger.log('WebSocket Gateway initialized');
-    
+
     // Add authentication middleware
     server.use((socket: Socket, next) => {
       try {
-        const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization;
-        
+        const token =
+          socket.handshake.auth?.token ||
+          socket.handshake.headers?.authorization;
+
         if (!token) {
-          this.logger.warn(`Connection attempt without token from ${socket.id}`);
+          this.logger.warn(
+            `Connection attempt without token from ${socket.id}`,
+          );
           return next(new Error('Authentication token required'));
         }
 
@@ -43,7 +49,7 @@ export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGate
         // 2. Check token expiration
         // 3. Extract user/hospital information
         // 4. Attach user data to socket.data
-        
+
         this.logger.log(`Client authenticated: ${socket.id}`);
         next();
       } catch (error) {
@@ -65,10 +71,10 @@ export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   handleJoinHospital(client: Socket, payload: { hospitalId: string }): void {
     const { hospitalId } = payload;
     const roomName = `hospital:${hospitalId}`;
-    
+
     client.join(roomName);
     this.logger.log(`Client ${client.id} joined room: ${roomName}`);
-    
+
     // Send confirmation to the client
     client.emit('joined', { hospitalId, room: roomName });
   }
@@ -80,8 +86,10 @@ export class OrdersGateway implements OnGatewayInit, OnGatewayConnection, OnGate
    */
   emitOrderUpdate(hospitalId: string, order: Partial<Order>): void {
     const roomName = `hospital:${hospitalId}`;
-    this.logger.log(`Broadcasting order update to room: ${roomName}, order: ${order.id}`);
-    
+    this.logger.log(
+      `Broadcasting order update to room: ${roomName}, order: ${order.id}`,
+    );
+
     this.server.to(roomName).emit('order:updated', order);
   }
 }

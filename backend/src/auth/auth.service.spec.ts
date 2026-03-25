@@ -1,15 +1,22 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import Redis from 'ioredis';
 import { AuthService } from './auth.service';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { UserEntity } from '../users/entities/user.entity';
+import { Repository } from 'typeorm';
+import { hashPassword } from './utils/password.util';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let jwtService: JwtService;
-  let redis: Redis;
+  let userRepository: jest.Mocked<Partial<Repository<UserEntity>>>;
 
   const mockJwtService = {
     sign: jest.fn(),
@@ -30,9 +37,25 @@ describe('AuthService', () => {
 
   const mockRedis = {
     set: jest.fn(),
+    hmset: jest.fn(),
+    expire: jest.fn(),
+    zadd: jest.fn(),
+    zcard: jest.fn(),
+    zrange: jest.fn(),
+    zrem: jest.fn(),
+    del: jest.fn(),
+    hset: jest.fn(),
+    hgetall: jest.fn(),
+    zrevrange: jest.fn(),
   };
 
   beforeEach(async () => {
+    userRepository = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -48,14 +71,21 @@ describe('AuthService', () => {
           provide: REDIS_CLIENT,
           useValue: mockRedis,
         },
+        {
+          provide: getRepositoryToken(UserEntity),
+          useValue: userRepository,
+        },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    jwtService = module.get<JwtService>(JwtService);
-    redis = module.get<Redis>(REDIS_CLIENT);
+    module.get<JwtService>(JwtService);
+    module.get<Redis>(REDIS_CLIENT);
 
     jest.clearAllMocks();
+    mockRedis.zcard.mockResolvedValue(1);
+    mockRedis.zrange.mockResolvedValue([]);
+    mockRedis.hgetall.mockResolvedValue({});
   });
 
   it('should be defined', () => {
@@ -64,13 +94,23 @@ describe('AuthService', () => {
 
   describe('login', () => {
     it('should return access and refresh tokens', async () => {
+      const user = {
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'donor',
+        passwordHash: await hashPassword('password'),
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      } as UserEntity;
+      (userRepository.findOne as jest.Mock).mockResolvedValue(user);
+      (userRepository.save as jest.Mock).mockResolvedValue(user);
+
       mockJwtService.sign.mockReturnValueOnce('access-token');
       mockJwtService.sign.mockReturnValueOnce('refresh-token');
 
       const result = await service.login({
         email: 'test@example.com',
         password: 'password',
-        role: 'donor',
       });
 
       expect(result).toEqual({
@@ -78,6 +118,66 @@ describe('AuthService', () => {
         refresh_token: 'refresh-token',
       });
       expect(mockJwtService.sign).toHaveBeenCalledTimes(2);
+    });
+
+    it('locks account after 5 failed attempts', async () => {
+      const user = {
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'donor',
+        passwordHash: await hashPassword('password'),
+        failedLoginAttempts: 4,
+        lockedUntil: null,
+      } as UserEntity;
+      (userRepository.findOne as jest.Mock).mockResolvedValue(user);
+      (userRepository.save as jest.Mock).mockImplementation(async (entity) => entity);
+
+      await expect(
+        service.login({ email: 'test@example.com', password: 'wrong-password' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(user.failedLoginAttempts).toBe(5);
+      expect(user.lockedUntil).toBeInstanceOf(Date);
+    });
+
+    it('auto unlocks account after lock duration and allows login', async () => {
+      const user = {
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'donor',
+        passwordHash: await hashPassword('password'),
+        failedLoginAttempts: 5,
+        lockedUntil: new Date(Date.now() - 60_000),
+      } as UserEntity;
+      (userRepository.findOne as jest.Mock).mockResolvedValue(user);
+      (userRepository.save as jest.Mock).mockImplementation(async (entity) => entity);
+      mockJwtService.sign.mockReturnValueOnce('access-token');
+      mockJwtService.sign.mockReturnValueOnce('refresh-token');
+
+      const result = await service.login({
+        email: 'test@example.com',
+        password: 'password',
+      });
+
+      expect(result.access_token).toBe('access-token');
+      expect(user.failedLoginAttempts).toBe(0);
+      expect(user.lockedUntil).toBeNull();
+    });
+
+    it('rejects login while account is still locked', async () => {
+      const user = {
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'donor',
+        passwordHash: await hashPassword('password'),
+        failedLoginAttempts: 5,
+        lockedUntil: new Date(Date.now() + 5 * 60 * 1000),
+      } as UserEntity;
+      (userRepository.findOne as jest.Mock).mockResolvedValue(user);
+
+      await expect(
+        service.login({ email: 'test@example.com', password: 'password' }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -87,10 +187,14 @@ describe('AuthService', () => {
         sub: 'user-123',
         email: 'test@example.com',
         role: 'donor',
+        sid: 'session-1',
       };
 
       mockJwtService.verify.mockReturnValue(mockPayload);
       mockRedis.set.mockResolvedValue('OK'); // SET NX succeeds
+      mockRedis.hgetall.mockResolvedValue({
+        userId: 'user-123',
+      });
       mockJwtService.sign.mockReturnValueOnce('new-access-token');
       mockJwtService.sign.mockReturnValueOnce('new-refresh-token');
 
@@ -101,7 +205,7 @@ describe('AuthService', () => {
         refresh_token: 'new-refresh-token',
       });
       expect(mockRedis.set).toHaveBeenCalledWith(
-        'refresh_token:old-refresh-token',
+        'auth:refresh-consumed:old-refresh-token',
         '1',
         'EX',
         604800,
@@ -114,6 +218,7 @@ describe('AuthService', () => {
         sub: 'user-123',
         email: 'test@example.com',
         role: 'donor',
+        sid: 'session-1',
       };
 
       mockJwtService.verify.mockReturnValue(mockPayload);
@@ -142,6 +247,42 @@ describe('AuthService', () => {
       await expect(service.refreshToken('expired-token')).rejects.toThrow(
         'Invalid or expired refresh token',
       );
+    });
+  });
+
+  describe('sessions', () => {
+    it('revokes owned session', async () => {
+      mockRedis.hgetall.mockResolvedValue({
+        userId: 'user-123',
+        email: 'test@example.com',
+      });
+
+      await service.revokeSession('user-123', 'session-abc');
+
+      expect(mockRedis.hset).toHaveBeenCalled();
+      expect(mockRedis.zrem).toHaveBeenCalledWith(
+        'auth:user-sessions:user-123',
+        'session-abc',
+      );
+    });
+  });
+
+  describe('changePassword', () => {
+    it('prevents reusing one of the last 3 passwords', async () => {
+      const oldHash = await hashPassword('OldPassword123');
+      const newerHash = await hashPassword('NewerPassword123');
+      const user = {
+        id: 'user-123',
+        email: 'test@example.com',
+        role: 'donor',
+        passwordHash: newerHash,
+        passwordHistory: [oldHash],
+      } as UserEntity;
+      (userRepository.findOne as jest.Mock).mockResolvedValue(user);
+
+      await expect(
+        service.changePassword('user-123', 'NewerPassword123', 'OldPassword123'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

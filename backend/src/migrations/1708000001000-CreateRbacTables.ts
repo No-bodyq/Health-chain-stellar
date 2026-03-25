@@ -1,4 +1,10 @@
-import { MigrationInterface, QueryRunner, Table, TableIndex, TableForeignKey } from 'typeorm';
+import {
+  MigrationInterface,
+  QueryRunner,
+  Table,
+  TableIndex,
+  TableForeignKey,
+} from 'typeorm';
 
 export class CreateRbacTables1708000001000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -118,17 +124,43 @@ export class CreateRbacTables1708000001000 implements MigrationInterface {
 
     // Admin gets every permission
     const adminPermissions = [
-      'create:order', 'view:order', 'update:order', 'cancel:order', 'delete:order',
-      'view:riders', 'create:rider', 'update:rider', 'delete:rider', 'manage:riders',
-      'view:hospitals', 'create:hospital', 'update:hospital', 'delete:hospital',
-      'view:inventory', 'create:inventory', 'update:inventory', 'delete:inventory',
-      'view:bloodunit:trail', 'register:bloodunit', 'transfer:custody', 'log:temperature',
-      'view:dispatch', 'create:dispatch', 'update:dispatch', 'delete:dispatch', 'manage:dispatch',
-      'view:users', 'manage:users', 'delete:user',
-      'view:notifications', 'manage:notifications',
+      'create:order',
+      'view:order',
+      'update:order',
+      'cancel:order',
+      'delete:order',
+      'view:riders',
+      'create:rider',
+      'update:rider',
+      'delete:rider',
+      'manage:riders',
+      'view:hospitals',
+      'create:hospital',
+      'update:hospital',
+      'delete:hospital',
+      'view:inventory',
+      'create:inventory',
+      'update:inventory',
+      'delete:inventory',
+      'view:bloodunit:trail',
+      'register:bloodunit',
+      'transfer:custody',
+      'log:temperature',
+      'view:dispatch',
+      'create:dispatch',
+      'update:dispatch',
+      'delete:dispatch',
+      'manage:dispatch',
+      'view:users',
+      'manage:users',
+      'delete:user',
+      'view:notifications',
+      'manage:notifications',
       'view:maps',
-      'manage:soroban', 'view:blockchain',
-      'admin:access', 'manage:roles',
+      'manage:soroban',
+      'view:blockchain',
+      'admin:access',
+      'manage:roles',
     ];
 
     for (const permission of adminPermissions) {
@@ -142,9 +174,12 @@ export class CreateRbacTables1708000001000 implements MigrationInterface {
 
     // Hospital: order management, inventory, blood units, notifications, maps
     const hospitalPermissions = [
-      'create:order', 'view:order', 'cancel:order',
+      'create:order',
+      'view:order',
+      'cancel:order',
       'view:inventory',
-      'view:bloodunit:trail', 'register:bloodunit',
+      'view:bloodunit:trail',
+      'register:bloodunit',
       'view:notifications',
       'view:maps',
       'view:hospitals',
@@ -161,7 +196,9 @@ export class CreateRbacTables1708000001000 implements MigrationInterface {
 
     // Donor: limited order viewing
     const donorPermissions = [
-      'create:order', 'view:order', 'cancel:order',
+      'create:order',
+      'view:order',
+      'cancel:order',
       'view:notifications',
     ];
 
@@ -176,11 +213,17 @@ export class CreateRbacTables1708000001000 implements MigrationInterface {
 
     // Rider: dispatch, orders, location updates
     const riderPermissions = [
-      'view:order', 'update:order',
-      'view:dispatch', 'update:dispatch', 'manage:dispatch',
-      'view:riders', 'update:rider',
+      'view:order',
+      'update:order',
+      'view:dispatch',
+      'update:dispatch',
+      'manage:dispatch',
+      'view:riders',
+      'update:rider',
       'view:maps',
-      'view:bloodunit:trail', 'transfer:custody', 'log:temperature',
+      'view:bloodunit:trail',
+      'transfer:custody',
+      'log:temperature',
       'view:notifications',
     ];
 
@@ -195,8 +238,13 @@ export class CreateRbacTables1708000001000 implements MigrationInterface {
 
     // Vendor: inventory management, blood unit registration
     const vendorPermissions = [
-      'view:inventory', 'create:inventory', 'update:inventory',
-      'view:bloodunit:trail', 'register:bloodunit', 'transfer:custody', 'log:temperature',
+      'view:inventory',
+      'create:inventory',
+      'update:inventory',
+      'view:bloodunit:trail',
+      'register:bloodunit',
+      'transfer:custody',
+      'log:temperature',
       'view:order',
       'view:notifications',
     ];

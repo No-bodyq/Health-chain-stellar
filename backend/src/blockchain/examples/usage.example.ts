@@ -1,6 +1,6 @@
 /**
  * Example: Using the Soroban Transaction Queue
- * 
+ *
  * This file demonstrates how to use the transaction queue system
  * in your NestJS controllers and services.
  */
@@ -94,7 +94,7 @@ export class BloodBankService {
 
   /**
    * Example 4: Handling concurrent duplicate submissions
-   * 
+   *
    * This demonstrates how the system prevents duplicate submissions
    * even when requests arrive simultaneously.
    */

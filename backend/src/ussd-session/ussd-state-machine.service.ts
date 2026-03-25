@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { UssdSession, UssdStep, UssdResponse, BloodType, BloodBank } from './ussd.types';
+import {
+  UssdSession,
+  UssdStep,
+  UssdResponse,
+  BloodType,
+  BloodBank,
+} from './ussd.types';
 import { UssdSessionStore } from './ussd-session.store';
 
 export const BLOOD_TYPES = Object.values(BloodType);
@@ -78,13 +84,18 @@ export class UssdStateMachine {
 
   // --- Step handlers ---
 
-  private async handleLoginPhone(session: UssdSession, input: string): Promise<UssdResponse> {
+  private async handleLoginPhone(
+    session: UssdSession,
+    input: string,
+  ): Promise<UssdResponse> {
     if (!input) {
       return this.promptForStep(session);
     }
     const phone = input.trim();
     if (!/^\+?[0-9]{7,15}$/.test(phone)) {
-      return this.con('Invalid phone number.\nEnter your registered phone number:');
+      return this.con(
+        'Invalid phone number.\nEnter your registered phone number:',
+      );
     }
     session.userId = phone; // placeholder – real impl would look up user by phone
     session.history.push(session.step);
@@ -93,7 +104,10 @@ export class UssdStateMachine {
     return this.promptForStep(session);
   }
 
-  private async handleLoginPin(session: UssdSession, input: string): Promise<UssdResponse> {
+  private async handleLoginPin(
+    session: UssdSession,
+    input: string,
+  ): Promise<UssdResponse> {
     if (!input) {
       return this.promptForStep(session);
     }
@@ -111,7 +125,10 @@ export class UssdStateMachine {
     return this.promptForStep(session);
   }
 
-  private async handleSelectBloodType(session: UssdSession, input: string): Promise<UssdResponse> {
+  private async handleSelectBloodType(
+    session: UssdSession,
+    input: string,
+  ): Promise<UssdResponse> {
     if (!input) {
       return this.promptForStep(session);
     }
@@ -126,7 +143,10 @@ export class UssdStateMachine {
     return this.promptForStep(session);
   }
 
-  private async handleSelectQuantity(session: UssdSession, input: string): Promise<UssdResponse> {
+  private async handleSelectQuantity(
+    session: UssdSession,
+    input: string,
+  ): Promise<UssdResponse> {
     if (!input) {
       return this.promptForStep(session);
     }
@@ -141,7 +161,10 @@ export class UssdStateMachine {
     return this.promptForStep(session);
   }
 
-  private async handleSelectBloodBank(session: UssdSession, input: string): Promise<UssdResponse> {
+  private async handleSelectBloodBank(
+    session: UssdSession,
+    input: string,
+  ): Promise<UssdResponse> {
     if (!input) {
       return this.promptForStep(session);
     }
@@ -195,15 +218,23 @@ export class UssdStateMachine {
   private promptForStep(session: UssdSession): UssdResponse {
     switch (session.step) {
       case UssdStep.LOGIN_PHONE:
-        return this.con('Welcome to DonorHub\nEnter your registered phone number:');
+        return this.con(
+          'Welcome to DonorHub\nEnter your registered phone number:',
+        );
       case UssdStep.LOGIN_PIN:
         return this.con('Enter your PIN:\n(0 to go back)');
       case UssdStep.SELECT_BLOOD_TYPE:
-        return this.con(`Select blood type:\n${this.buildBloodTypeMenu()}\n0 Back`);
+        return this.con(
+          `Select blood type:\n${this.buildBloodTypeMenu()}\n0 Back`,
+        );
       case UssdStep.SELECT_QUANTITY:
-        return this.con(`Select quantity (units):\n${this.buildQuantityMenu()}\n0 Back`);
+        return this.con(
+          `Select quantity (units):\n${this.buildQuantityMenu()}\n0 Back`,
+        );
       case UssdStep.SELECT_BLOOD_BANK:
-        return this.con(`Select blood bank:\n${this.buildBloodBankMenu()}\n0 Back`);
+        return this.con(
+          `Select blood bank:\n${this.buildBloodBankMenu()}\n0 Back`,
+        );
       case UssdStep.CONFIRM_ORDER:
         return this.con(this.buildConfirmMenu(session));
       default:
@@ -216,7 +247,9 @@ export class UssdStateMachine {
   }
 
   private buildQuantityMenu(): string {
-    return VALID_QUANTITIES.map((q, i) => `${i + 1}. ${q} unit${q > 1 ? 's' : ''}`).join('\n');
+    return VALID_QUANTITIES.map(
+      (q, i) => `${i + 1}. ${q} unit${q > 1 ? 's' : ''}`,
+    ).join('\n');
   }
 
   private buildBloodBankMenu(): string {
@@ -246,6 +279,8 @@ export class UssdStateMachine {
   }
 
   private truncate(msg: string): string {
-    return msg.length > MAX_RESPONSE_LENGTH ? msg.substring(0, MAX_RESPONSE_LENGTH - 3) + '...' : msg;
+    return msg.length > MAX_RESPONSE_LENGTH
+      ? msg.substring(0, MAX_RESPONSE_LENGTH - 3) + '...'
+      : msg;
   }
 }

@@ -15,19 +15,21 @@ export class InventoryEventListener {
     private readonly notificationsService: NotificationsService,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
-  ) { }
+  ) {}
 
   @OnEvent('inventory.low')
   async handleInventoryLow(event: InventoryLowEvent) {
     this.logger.log(
       `Handling low inventory: ${event.bloodType} in ${event.region} - ` +
-      `${event.projectedDaysOfSupply.toFixed(1)} days remaining`
+        `${event.projectedDaysOfSupply.toFixed(1)} days remaining`,
     );
 
     const adminRecipients = await this.getAdminRecipients(event.region);
 
     if (adminRecipients.length === 0) {
-      this.logger.warn(`No admins found for region: ${event.region}. Sending to global admins.`);
+      this.logger.warn(
+        `No admins found for region: ${event.region}. Sending to global admins.`,
+      );
       const globalAdmins = await this.getAdminRecipients('Global');
       adminRecipients.push(...globalAdmins);
     }
@@ -58,6 +60,6 @@ export class InventoryEventListener {
       select: ['id'],
     });
 
-    return admins.map(admin => admin.id);
+    return admins.map((admin) => admin.id);
   }
 }

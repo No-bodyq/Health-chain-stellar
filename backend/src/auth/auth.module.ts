@@ -13,6 +13,8 @@ import { PermissionsService } from './permissions.service';
 import { RoleEntity } from './entities/role.entity';
 import { RolePermissionEntity } from './entities/role-permission.entity';
 import { RedisModule } from '../redis/redis.module';
+import { UserEntity } from '../users/entities/user.entity';
+import { UserActivityModule } from '../user-activity/user-activity.module';
 
 @Module({
   imports: [
@@ -25,14 +27,14 @@ import { RedisModule } from '../redis/redis.module';
         return {
           secret: configService.get<string>('JWT_SECRET') ?? 'default-secret',
           signOptions: {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             expiresIn: expiresIn as any,
           },
         };
       },
     }),
-    TypeOrmModule.forFeature([RoleEntity, RolePermissionEntity]),
+    TypeOrmModule.forFeature([RoleEntity, RolePermissionEntity, UserEntity]),
     RedisModule,
+    UserActivityModule,
   ],
   controllers: [AuthController],
   providers: [

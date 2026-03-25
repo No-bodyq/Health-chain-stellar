@@ -23,7 +23,9 @@ export class OrderNotificationListener {
 
   @OnEvent('order.confirmed')
   async handleOrderConfirmed(event: OrderConfirmedEvent) {
-    this.logger.log(`Handling order.confirmed notification for order ${event.orderId}`);
+    this.logger.log(
+      `Handling order.confirmed notification for order ${event.orderId}`,
+    );
 
     try {
       // Send notification to hospital
@@ -49,7 +51,9 @@ export class OrderNotificationListener {
 
   @OnEvent('order.cancelled')
   async handleOrderCancelled(event: OrderCancelledEvent) {
-    this.logger.log(`Handling order.cancelled notification for order ${event.orderId}`);
+    this.logger.log(
+      `Handling order.cancelled notification for order ${event.orderId}`,
+    );
 
     try {
       // Send notification to hospital
@@ -72,13 +76,19 @@ export class OrderNotificationListener {
 
   @OnEvent('order.rider.assigned')
   async handleOrderRiderAssigned(event: OrderRiderAssignedEvent) {
-    this.logger.log(`Handling order.rider.assigned notification for order ${event.orderId}`);
+    this.logger.log(
+      `Handling order.rider.assigned notification for order ${event.orderId}`,
+    );
 
     try {
       // Send notification to rider
       await this.notificationsService.send({
         recipientId: event.riderId,
-        channels: [NotificationChannel.SMS, NotificationChannel.PUSH, NotificationChannel.IN_APP],
+        channels: [
+          NotificationChannel.SMS,
+          NotificationChannel.PUSH,
+          NotificationChannel.IN_APP,
+        ],
         templateKey: 'order.rider.assigned',
         variables: {
           orderId: event.orderId,
@@ -95,7 +105,9 @@ export class OrderNotificationListener {
 
   @OnEvent('order.dispatched')
   async handleOrderDispatched(event: OrderDispatchedEvent) {
-    this.logger.log(`Handling order.dispatched notification for order ${event.orderId}`);
+    this.logger.log(
+      `Handling order.dispatched notification for order ${event.orderId}`,
+    );
 
     try {
       // Send notification to rider
@@ -117,7 +129,9 @@ export class OrderNotificationListener {
 
   @OnEvent('order.delivered')
   async handleOrderDelivered(event: OrderDeliveredEvent) {
-    this.logger.log(`Handling order.delivered notification for order ${event.orderId}`);
+    this.logger.log(
+      `Handling order.delivered notification for order ${event.orderId}`,
+    );
 
     try {
       // Send notification - would need to fetch order details to get hospitalId

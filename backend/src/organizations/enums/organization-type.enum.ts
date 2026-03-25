@@ -1,0 +1,5 @@
+export enum OrganizationType {
+  BLOOD_BANK = 'BLOOD_BANK',
+  HOSPITAL = 'HOSPITAL',
+  COLLECTION_CENTER = 'COLLECTION_CENTER',
+}

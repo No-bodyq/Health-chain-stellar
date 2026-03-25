@@ -79,8 +79,14 @@ describe('InventoryRepository', () => {
       const result = await repository.getStockAggregationByBloodType();
 
       expect(typeormRepo.createQueryBuilder).toHaveBeenCalledWith('inventory');
-      expect(queryBuilder.select).toHaveBeenCalledWith('inventory.bloodType', 'bloodType');
-      expect(queryBuilder.addSelect).toHaveBeenCalledWith('SUM(inventory.quantity)', 'totalQuantity');
+      expect(queryBuilder.select).toHaveBeenCalledWith(
+        'inventory.bloodType',
+        'bloodType',
+      );
+      expect(queryBuilder.addSelect).toHaveBeenCalledWith(
+        'SUM(inventory.quantity)',
+        'totalQuantity',
+      );
       expect(queryBuilder.groupBy).toHaveBeenCalledWith('inventory.bloodType');
       expect(result).toEqual([
         {
@@ -165,7 +171,10 @@ describe('InventoryRepository', () => {
 
       const result = await repository.getInventoryStats();
 
-      expect(queryBuilder.select).toHaveBeenCalledWith('COUNT(*)', 'totalItems');
+      expect(queryBuilder.select).toHaveBeenCalledWith(
+        'COUNT(*)',
+        'totalItems',
+      );
       expect(result).toEqual({
         totalItems: 10,
         totalQuantity: 500,
@@ -202,7 +211,9 @@ describe('InventoryRepository', () => {
       await repository.adjustStock('inv-123', 10);
 
       expect(queryBuilder.update).toHaveBeenCalledWith(InventoryEntity);
-      expect(queryBuilder.where).toHaveBeenCalledWith('id = :id', { id: 'inv-123' });
+      expect(queryBuilder.where).toHaveBeenCalledWith('id = :id', {
+        id: 'inv-123',
+      });
       expect(queryBuilder.execute).toHaveBeenCalled();
     });
   });

@@ -9,9 +9,13 @@ import {
 } from 'typeorm';
 
 @Entity('inventory_stocks')
-@Index('idx_inventory_stocks_bank_blood_type_unique', ['bloodBankId', 'bloodType'], {
-  unique: true,
-})
+@Index(
+  'idx_inventory_stocks_bank_blood_type_unique',
+  ['bloodBankId', 'bloodType'],
+  {
+    unique: true,
+  },
+)
 export class InventoryStockEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

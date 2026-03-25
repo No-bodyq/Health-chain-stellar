@@ -8,7 +8,12 @@ import { RidersModule } from '../riders/riders.module';
 import { MapsModule } from '../maps/maps.module';
 
 @Module({
-  imports: [ConfigModule, EventEmitterModule.forRoot(), RidersModule, MapsModule],
+  imports: [
+    ConfigModule,
+    EventEmitterModule.forRoot(),
+    RidersModule,
+    MapsModule,
+  ],
   controllers: [DispatchController],
   providers: [DispatchService, RiderAssignmentService],
   exports: [DispatchService, RiderAssignmentService],

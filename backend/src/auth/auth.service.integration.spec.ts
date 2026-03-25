@@ -6,13 +6,46 @@ import RedisMock from 'ioredis-mock';
 import { AuthService } from './auth.service';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { UnauthorizedException } from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { UserEntity } from '../users/entities/user.entity';
+import { hashPassword } from './utils/password.util';
 
 describe('AuthService - Refresh Token Race Condition (Integration)', () => {
   let authService: AuthService;
   let redis: Redis;
   let jwtService: JwtService;
+  let userRepository: {
+    findOne: jest.Mock;
+    save: jest.Mock;
+  };
 
   beforeAll(async () => {
+    const passwordHash = await hashPassword('password');
+    const mockUser: UserEntity = {
+      id: 'placeholder-user-id',
+      email: 'test@example.com',
+      name: 'Test User',
+      role: 'donor',
+      region: '',
+      phoneNumber: '',
+      passwordHash,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      passwordHistory: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    userRepository = {
+      findOne: jest.fn(async ({ where }) => {
+        if (where?.email === mockUser.email || where?.id === mockUser.id) {
+          return mockUser;
+        }
+        return null;
+      }),
+      save: jest.fn(async (entity) => entity),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
@@ -31,6 +64,10 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
           useFactory: () => {
             return new RedisMock();
           },
+        },
+        {
+          provide: getRepositoryToken(UserEntity),
+          useValue: userRepository,
         },
       ],
     }).compile();
@@ -56,7 +93,6 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
       const loginResult = await authService.login({
         email: 'test@example.com',
         password: 'password',
-        role: 'donor',
       });
 
       const refreshToken = loginResult.refresh_token;
@@ -68,14 +104,16 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
       ]);
 
       // One should succeed, one should fail
-      const succeeded = [result1, result2].filter(r => r.status === 'fulfilled');
-      const failed = [result1, result2].filter(r => r.status === 'rejected');
+      const succeeded = [result1, result2].filter(
+        (r) => r.status === 'fulfilled',
+      );
+      const failed = [result1, result2].filter((r) => r.status === 'rejected');
 
       expect(succeeded).toHaveLength(1);
       expect(failed).toHaveLength(1);
 
       // Verify the failed one has the correct error
-      const failedResult = failed[0] as PromiseRejectedResult;
+      const failedResult = failed[0];
       expect(failedResult.reason).toBeInstanceOf(UnauthorizedException);
       expect(failedResult.reason.message).toBe('INVALID_REFRESH_TOKEN');
     });
@@ -84,7 +122,6 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
       const loginResult = await authService.login({
         email: 'test@example.com',
         password: 'password',
-        role: 'donor',
       });
 
       const oldRefreshToken = loginResult.refresh_token;
@@ -100,7 +137,9 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
       );
 
       // New token should work
-      const secondRefresh = await authService.refreshToken(refreshResult.refresh_token);
+      const secondRefresh = await authService.refreshToken(
+        refreshResult.refresh_token,
+      );
       expect(secondRefresh.access_token).toBeDefined();
       expect(secondRefresh.refresh_token).toBeDefined();
     });
@@ -109,7 +148,6 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
       const loginResult = await authService.login({
         email: 'test@example.com',
         password: 'password',
-        role: 'donor',
       });
 
       const refreshToken = loginResult.refresh_token;
@@ -133,7 +171,6 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
       const loginResult = await authService.login({
         email: 'test@example.com',
         password: 'password',
-        role: 'donor',
       });
 
       const refreshToken = loginResult.refresh_token;
@@ -145,15 +182,15 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
 
       const results = await Promise.allSettled(promises);
 
-      const succeeded = results.filter(r => r.status === 'fulfilled');
-      const failed = results.filter(r => r.status === 'rejected');
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
+      const failed = results.filter((r) => r.status === 'rejected');
 
       expect(succeeded).toHaveLength(1);
       expect(failed).toHaveLength(9);
 
       // All failures should have the correct error
-      failed.forEach(result => {
-        const failedResult = result as PromiseRejectedResult;
+      failed.forEach((result) => {
+        const failedResult = result;
         expect(failedResult.reason).toBeInstanceOf(UnauthorizedException);
       });
     });
@@ -162,16 +199,17 @@ describe('AuthService - Refresh Token Race Condition (Integration)', () => {
       const loginResult = await authService.login({
         email: 'test@example.com',
         password: 'password',
-        role: 'admin',
       });
 
-      const refreshResult = await authService.refreshToken(loginResult.refresh_token);
+      const refreshResult = await authService.refreshToken(
+        loginResult.refresh_token,
+      );
 
       // Decode the new access token
-      const decoded = jwtService.decode(refreshResult.access_token) as any;
+      const decoded = jwtService.decode(refreshResult.access_token);
 
       expect(decoded.email).toBe('test@example.com');
-      expect(decoded.role).toBe('admin');
+      expect(decoded.role).toBe('donor');
       expect(decoded.sub).toBe('placeholder-user-id');
     });
   });

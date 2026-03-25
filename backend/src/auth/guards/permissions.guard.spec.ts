@@ -192,7 +192,9 @@ describe('PermissionsGuard', () => {
           unknown
         >;
         expect(response.requiredPermission).toBe(Permission.MANAGE_RIDERS);
-        expect(response.requiredPermissions).toContain(Permission.MANAGE_RIDERS);
+        expect(response.requiredPermissions).toContain(
+          Permission.MANAGE_RIDERS,
+        );
         expect(response.statusCode).toBe(403);
       }
     });
@@ -281,7 +283,11 @@ describe('PermissionsGuard', () => {
 
       await expect(
         guard.canActivate(
-          createMockContext({ id: '7', email: 'g@h.com', role: 'unknown_role' }),
+          createMockContext({
+            id: '7',
+            email: 'g@h.com',
+            role: 'unknown_role',
+          }),
         ),
       ).rejects.toThrow(ForbiddenException);
     });

@@ -72,11 +72,7 @@ export class InventoryRepository {
   async getLowStockItems(threshold?: number): Promise<LowStockItem[]> {
     const queryBuilder = this.repository
       .createQueryBuilder('inventory')
-      .select([
-        'inventory.id',
-        'inventory.bloodType',
-        'inventory.quantity',
-      ]);
+      .select(['inventory.id', 'inventory.bloodType', 'inventory.quantity']);
 
     if (threshold !== undefined) {
       queryBuilder.where('inventory.quantity <= :threshold', { threshold });
@@ -228,7 +224,11 @@ export class InventoryRepository {
    * Replaces: Complex GROUP BY query with HAVING clause
    */
   async getReorderSummary(): Promise<
-    Array<{ bloodType: string; totalDeficit: number; affectedHospitals: number }>
+    Array<{
+      bloodType: string;
+      totalDeficit: number;
+      affectedHospitals: number;
+    }>
   > {
     const results = await this.repository
       .createQueryBuilder('inventory')

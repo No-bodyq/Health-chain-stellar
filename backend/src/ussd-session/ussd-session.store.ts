@@ -49,7 +49,10 @@ export class UssdSessionStore {
     }
   }
 
-  async createInitial(sessionId: string, phoneNumber: string): Promise<UssdSession> {
+  async createInitial(
+    sessionId: string,
+    phoneNumber: string,
+  ): Promise<UssdSession> {
     const session: UssdSession = {
       sessionId,
       phoneNumber,

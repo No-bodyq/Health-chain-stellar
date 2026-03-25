@@ -45,7 +45,9 @@ describe('DispatchService Integration Tests', () => {
     }).compile();
 
     dispatchService = module.get<DispatchService>(DispatchService);
-    riderAssignmentService = module.get<RiderAssignmentService>(RiderAssignmentService);
+    riderAssignmentService = module.get<RiderAssignmentService>(
+      RiderAssignmentService,
+    );
     eventEmitter = module.get<EventEmitter2>(EventEmitter2);
   });
 
@@ -140,7 +142,8 @@ describe('DispatchService Integration Tests', () => {
       expect(logs.data.some((log: any) => log.status === 'timeout')).toBe(true);
       expect(
         logs.data.some(
-          (log: any) => log.status === 'pending' && log.selectedRiderId === 'rider-b',
+          (log: any) =>
+            log.status === 'pending' && log.selectedRiderId === 'rider-b',
         ),
       ).toBe(true);
       jest.useRealTimers();
@@ -172,7 +175,11 @@ describe('DispatchService Integration Tests', () => {
           'Yaba',
         ),
       );
-      await dispatchService.respondToAssignment('order-accepted', 'rider-a', true);
+      await dispatchService.respondToAssignment(
+        'order-accepted',
+        'rider-a',
+        true,
+      );
 
       expect(emitSpy).toHaveBeenCalledWith(
         'order.rider.assigned',

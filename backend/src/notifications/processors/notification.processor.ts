@@ -40,31 +40,30 @@ export class NotificationProcessor extends WorkerHost {
   async process(job: Job<NotificationJobData, any, string>): Promise<any> {
     const { notificationId, channel, recipientId, renderedBody } = job.data;
 
-     const idempotencyKey = `${notificationId}:${channel}`;
+    const idempotencyKey = `${notificationId}:${channel}`;
 
     this.logger.log(
       `Processing notification job ${job.id} for ${channel} -> ${recipientId}`,
     );
 
-     const notification = await this.notificationRepo.findOne({
-  where: {
-    notificationId,
-    channel,
-  },
-});
+    const notification = await this.notificationRepo.findOne({
+      where: {
+        notificationId,
+        channel,
+      },
+    });
 
-  if (!notification) {
-    this.logger.warn(`Notification ${notificationId} not found`);
-    return;
-  }
+    if (!notification) {
+      this.logger.warn(`Notification ${notificationId} not found`);
+      return;
+    }
 
-  
-  if (notification.status === NotificationStatus.SENT) {
-    this.logger.warn(
-      `Skipping duplicate send for ${idempotencyKey} (already SENT)`,
-    );
-    return { status: 'already_sent', notificationId };
-  }
+    if (notification.status === NotificationStatus.SENT) {
+      this.logger.warn(
+        `Skipping duplicate send for ${idempotencyKey} (already SENT)`,
+      );
+      return { status: 'already_sent', notificationId };
+    }
 
     try {
       switch (channel) {

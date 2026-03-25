@@ -58,19 +58,18 @@ describe('Duplicate Notification Retry Protection', () => {
       },
     };
 
-    
     jest
       .spyOn(repo, 'findOne')
       .mockResolvedValueOnce({
         ...mockNotification,
         status: NotificationStatus.PENDING,
       } as any)
-      
+
       .mockResolvedValueOnce({
         ...mockNotification,
         status: NotificationStatus.SENT,
       } as any)
-      
+
       .mockResolvedValueOnce({
         ...mockNotification,
         status: NotificationStatus.SENT,
@@ -78,7 +77,6 @@ describe('Duplicate Notification Retry Protection', () => {
 
     (smsProvider.send as jest.Mock).mockResolvedValue(true);
 
-    
     await processor.process(job);
     await processor.process(job);
     await processor.process(job);

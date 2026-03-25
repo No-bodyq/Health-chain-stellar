@@ -7,6 +7,7 @@ import { RolePermissionEntity } from './entities/role-permission.entity';
 import { Permission } from './enums/permission.enum';
 import { UserRole } from './enums/user-role.enum';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { UserActivityService } from '../user-activity/user-activity.service';
 
 // ──────────────────────────── test helpers ───────────────────────────────────
 
@@ -41,12 +42,16 @@ describe('PermissionsService', () => {
     setex: jest.Mock;
     del: jest.Mock;
   };
+  let userActivityService: { logActivity: jest.Mock };
 
   beforeEach(async () => {
     redisClient = {
       get: jest.fn(),
       setex: jest.fn(),
       del: jest.fn(),
+    };
+    userActivityService = {
+      logActivity: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -69,6 +74,10 @@ describe('PermissionsService', () => {
         {
           provide: REDIS_CLIENT,
           useValue: redisClient,
+        },
+        {
+          provide: UserActivityService,
+          useValue: userActivityService,
         },
       ],
     }).compile();

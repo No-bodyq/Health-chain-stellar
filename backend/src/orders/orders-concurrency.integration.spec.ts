@@ -28,7 +28,11 @@ describe('Orders Inventory Concurrency Integration', () => {
           entities: [OrderEntity, OrderEventEntity, InventoryStockEntity],
           synchronize: true,
         }),
-        TypeOrmModule.forFeature([OrderEntity, OrderEventEntity, InventoryStockEntity]),
+        TypeOrmModule.forFeature([
+          OrderEntity,
+          OrderEventEntity,
+          InventoryStockEntity,
+        ]),
         EventEmitterModule.forRoot(),
       ],
       controllers: [OrdersController],

@@ -2,7 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Queue } from 'bull';
 import { InjectQueue } from '@nestjs/bull';
 import { IdempotencyService } from './idempotency.service';
-import { SorobanTxJob, SorobanTxResult, QueueMetrics } from '../types/soroban-tx.types';
+import {
+  SorobanTxJob,
+  SorobanTxResult,
+  QueueMetrics,
+} from '../types/soroban-tx.types';
 
 @Injectable()
 export class SorobanService {
@@ -20,7 +24,7 @@ export class SorobanService {
   /**
    * Submit a transaction to the queue with idempotency guarantee.
    * All Soroban contract calls must go through this method.
-   * 
+   *
    * @param job - Transaction job with contractMethod, args, and idempotencyKey
    * @returns Job ID for status tracking
    * @throws Error if idempotency key already exists (duplicate submission)
@@ -98,7 +102,7 @@ export class SorobanService {
 
   /**
    * Get real-time queue metrics for admin monitoring.
-   * 
+   *
    * @returns Queue depth, failed jobs count, and DLQ count
    */
   async getQueueMetrics(): Promise<QueueMetrics> {
@@ -118,7 +122,7 @@ export class SorobanService {
 
   /**
    * Get status of a specific job.
-   * 
+   *
    * @param jobId - Job ID to check
    * @returns Job status or null if not found
    */
@@ -145,10 +149,10 @@ export class SorobanService {
   /**
    * Calculate exponential backoff delay with jitter.
    * Prevents thundering herd problem during retries.
-   * 
+   *
    * Formula: min(baseDelay * 2^(attempt-1) + jitter, maxDelay)
    * Jitter: random 0-10% of exponential delay
-   * 
+   *
    * @param attemptNumber - Attempt number (1-based)
    * @returns Delay in milliseconds
    */
