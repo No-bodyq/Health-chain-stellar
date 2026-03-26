@@ -3,8 +3,9 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 
 /**
@@ -33,7 +34,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handleRequest<TUser = any>(err: any, user: any, info: any): TUser {
     if (err || !user) {
       const message =

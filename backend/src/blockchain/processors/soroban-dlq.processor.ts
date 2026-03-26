@@ -1,143 +1,99 @@
 import { Process, Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bull';
-import { SorobanTxJob } from '../types/soroban-tx.types';
+
+import { CompensationService } from '../../common/compensation/compensation.service';
+import {
+  BlockchainTxIrrecoverableError,
+  CompensationAction,
+} from '../../common/errors/app-errors';
+
+import type { SorobanTxJob } from '../types/soroban-tx.types';
+import type { Job } from 'bull';
 
 /**
  * Dead Letter Queue Processor
- * 
- * Handles transactions that have permanently failed after exhausting all retries.
- * Captures full error context for audit trail and alerts admins.
+ *
+ * Handles Soroban transactions that permanently failed after exhausting all retries.
+ * Applies deterministic compensating actions: persist audit record, flag for review,
+ * and emit a structured admin alert via the CompensationService.
  */
 @Processor('soroban-dlq')
 export class SorobanDlqProcessor {
   private readonly logger = new Logger(SorobanDlqProcessor.name);
 
-  /**
-   * Process dead letter job.
-   * Called when a transaction exceeds max retries and is moved to DLQ.
-   * 
-   * Responsibilities:
-   * 1. Log full error context
-   * 2. Persist DLQ entry to database for audit trail
-   * 3. Alert admins about permanent failure
-   * 4. Enable manual recovery workflows
-   * 
-   * @param job - Failed transaction job
-   */
+  constructor(private readonly compensationService: CompensationService) {}
+
   @Process()
-  async handleDeadLetterJob(job: Job<SorobanTxJob>) {
+  async handleDeadLetterJob(job: Job<SorobanTxJob>): Promise<void> {
     this.logger.error(
-      `Dead letter job received: ${job.id}`,
-      JSON.stringify(job.data, null, 2),
+      `[DLQ] Permanent failure for job=${job.id} method=${job.data.contractMethod} attempts=${job.attemptsMade}`,
+      { idempotencyKey: job.data.idempotencyKey, metadata: job.data.metadata },
     );
 
-    // Build DLQ entry with full context for manual review and recovery
-    const dlqEntry = {
-      jobId: job.id,
-      contractMethod: job.data.contractMethod,
-      args: job.data.args,
-      idempotencyKey: job.data.idempotencyKey,
-      failureReason: job.failedReason,
-      attemptsMade: job.attemptsMade,
-      maxAttempts: job.opts.attempts,
-      timestamp: new Date(),
-      metadata: job.data.metadata,
-      stackTrace: job.stacktrace,
-    };
+    const error = new BlockchainTxIrrecoverableError(
+      `Soroban transaction permanently failed after ${job.attemptsMade} attempts: ${job.failedReason ?? 'unknown'}`,
+      {
+        jobId: String(job.id),
+        contractMethod: job.data.contractMethod,
+        idempotencyKey: job.data.idempotencyKey,
+        attemptsMade: job.attemptsMade,
+        maxAttempts: job.opts.attempts,
+        failureReason: job.failedReason,
+        stackTrace: job.stacktrace,
+        metadata: job.data.metadata ?? {},
+      },
+    );
 
-    // Persist to database for audit trail and manual review
-    await this.persistDlqEntry(dlqEntry);
+    const handlers = [
+      {
+        action: CompensationAction.PERSIST_DLQ,
+        execute: async () => {
+          // The CompensationService itself persists the FailureRecord.
+          // This handler is a no-op marker so the action appears in the audit trail.
+          this.logger.log(`[DLQ] Marking PERSIST_DLQ for job=${job.id}`);
+          return true;
+        },
+      },
+      {
+        action: CompensationAction.NOTIFY_ADMIN,
+        execute: async () => {
+          // Structured log at ERROR level — picked up by any log aggregator
+          // (CloudWatch, Datadog, etc.) configured to alert on ERROR severity.
+          this.logger.error(
+            `[ADMIN ALERT] Blockchain transaction requires manual review`,
+            {
+              jobId: String(job.id),
+              contractMethod: job.data.contractMethod,
+              idempotencyKey: job.data.idempotencyKey,
+              failureReason: job.failedReason,
+              attemptsMade: job.attemptsMade,
+            },
+          );
+          return true;
+        },
+      },
+      {
+        action: CompensationAction.FLAG_FOR_REVIEW,
+        execute: async () => {
+          // Persisted via CompensationService → FailureRecordService.
+          // Logged here for immediate visibility.
+          this.logger.warn(
+            `[REVIEW REQUIRED] Soroban job=${job.id} flagged for manual review`,
+            { idempotencyKey: job.data.idempotencyKey },
+          );
+          return true;
+        },
+      },
+    ];
 
-    // Alert admins about permanent failure
-    await this.notifyAdmins(dlqEntry);
+    const result = await this.compensationService.compensate(
+      error,
+      handlers,
+      job.data.idempotencyKey,
+    );
 
     this.logger.log(
-      `DLQ entry processed and stored: ${dlqEntry.jobId}`,
-      dlqEntry,
-    );
-  }
-
-  /**
-   * Persist DLQ entry to database for audit trail.
-   * 
-   * TODO: Implement database persistence
-   * Should store:
-   * - Full job data and error context
-   * - Timestamp of failure
-   * - Number of attempts made
-   * - Stack trace for debugging
-   * - Metadata for correlation
-   * 
-   * This enables:
-   * - Audit trail for compliance
-   * - Manual recovery workflows
-   * - Pattern analysis for systemic issues
-   * - Admin dashboard for monitoring
-   * 
-   * @param dlqEntry - DLQ entry to persist
-   */
-  private async persistDlqEntry(dlqEntry: any): Promise<void> {
-    // TODO: Implement database persistence
-    // Example:
-    // await this.dlqRepository.save({
-    //   jobId: dlqEntry.jobId,
-    //   contractMethod: dlqEntry.contractMethod,
-    //   args: JSON.stringify(dlqEntry.args),
-    //   idempotencyKey: dlqEntry.idempotencyKey,
-    //   failureReason: dlqEntry.failureReason,
-    //   attemptsMade: dlqEntry.attemptsMade,
-    //   metadata: JSON.stringify(dlqEntry.metadata),
-    //   createdAt: dlqEntry.timestamp,
-    //   status: 'pending_review',
-    // });
-
-    this.logger.log(`DLQ entry persisted: ${dlqEntry.jobId}`);
-  }
-
-  /**
-   * Notify admins about permanently failed transaction.
-   * 
-   * TODO: Implement admin notification system
-   * Options:
-   * - Email notification to ops team
-   * - Slack webhook to #alerts channel
-   * - PagerDuty incident creation
-   * - SMS for critical failures
-   * - Monitoring system integration (Datadog, New Relic)
-   * 
-   * Should include:
-   * - Job ID and contract method
-   * - Error message and stack trace
-   * - Number of attempts made
-   * - Metadata for context
-   * - Link to admin dashboard for recovery
-   * 
-   * @param dlqEntry - DLQ entry with failure details
-   */
-  private async notifyAdmins(dlqEntry: any): Promise<void> {
-    // TODO: Implement admin notification
-    // Example Slack notification:
-    // await this.slackService.sendAlert({
-    //   channel: '#blockchain-alerts',
-    //   title: 'Transaction Permanently Failed',
-    //   fields: {
-    //     'Job ID': dlqEntry.jobId,
-    //     'Contract Method': dlqEntry.contractMethod,
-    //     'Attempts': `${dlqEntry.attemptsMade}/${dlqEntry.maxAttempts}`,
-    //     'Error': dlqEntry.failureReason,
-    //     'Timestamp': dlqEntry.timestamp.toISOString(),
-    //   },
-    //   actionUrl: `${process.env.ADMIN_DASHBOARD_URL}/dlq/${dlqEntry.jobId}`,
-    // });
-
-    this.logger.warn(
-      `Admin notification needed for DLQ entry: ${dlqEntry.jobId}`,
-      {
-        contractMethod: dlqEntry.contractMethod,
-        failureReason: dlqEntry.failureReason,
-        attempts: dlqEntry.attemptsMade,
-      },
+      `[DLQ] Compensation complete for job=${job.id}: applied=${result.applied.join(',')} failed=${result.failed.join(',') || 'none'} recordId=${result.failureRecordId}`,
     );
   }
 }

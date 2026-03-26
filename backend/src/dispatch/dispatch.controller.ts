@@ -10,9 +10,11 @@ import {
   HttpStatus,
   Query,
 } from '@nestjs/common';
-import { DispatchService } from './dispatch.service';
+
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
+
+import { DispatchService } from './dispatch.service';
 
 @Controller('dispatch')
 export class DispatchController {

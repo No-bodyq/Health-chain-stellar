@@ -1,19 +1,38 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /// <reference types="jest" />
-import { Test, TestingModule } from '@nestjs/testing';
 import { getQueueToken } from '@nestjs/bull';
-import { SorobanService } from '../services/soroban.service';
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { JobDeduplicationPlugin } from '../plugins/job-deduplication.plugin';
 import { IdempotencyService } from '../services/idempotency.service';
+import { SorobanService } from '../services/soroban.service';
 import { SorobanTxJob } from '../types/soroban-tx.types';
 
 describe('SorobanService', () => {
   let service: SorobanService;
-  let mockTxQueue: any;
-  let mockDlq: any;
-  let mockIdempotencyService: any;
+  let mockTxQueue: {
+    add: jest.Mock;
+    count: jest.Mock;
+    getFailedCount: jest.Mock;
+    getJob: jest.Mock;
+  };
+  let mockDlq: {
+    count: jest.Mock;
+  };
+  let mockIdempotencyService: {
+    checkAndSetIdempotencyKey: jest.Mock;
+  };
+  let mockDeduplicationPlugin: {
+    checkAndSetJobDedup: jest.Mock;
+  };
 
   beforeEach(async () => {
     mockTxQueue = {
-      add: jest.fn().mockResolvedValue({ id: 'job-123' }),
+      add: jest
+        .fn()
+        .mockImplementation((_data: SorobanTxJob, opts: { jobId?: string }) =>
+          Promise.resolve({ id: opts?.jobId ?? 'job-123' }),
+        ),
       count: jest.fn().mockResolvedValue(5),
       getFailedCount: jest.fn().mockResolvedValue(2),
       getJob: jest.fn(),
@@ -25,6 +44,10 @@ describe('SorobanService', () => {
 
     mockIdempotencyService = {
       checkAndSetIdempotencyKey: jest.fn().mockResolvedValue(true),
+    };
+
+    mockDeduplicationPlugin = {
+      checkAndSetJobDedup: jest.fn().mockResolvedValue(true),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -41,6 +64,10 @@ describe('SorobanService', () => {
         {
           provide: IdempotencyService,
           useValue: mockIdempotencyService,
+        },
+        {
+          provide: JobDeduplicationPlugin,
+          useValue: mockDeduplicationPlugin,
         },
       ],
     }).compile();
@@ -59,12 +86,14 @@ describe('SorobanService', () => {
 
       const jobId = await service.submitTransaction(job);
 
-      expect(jobId).toBe('job-123');
+      expect(jobId).toBe('idempotency-key-1');
       expect(mockTxQueue.add).toHaveBeenCalledWith(job, expect.any(Object));
     });
 
     it('should reject duplicate submissions', async () => {
-      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(false);
+      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(
+        false,
+      );
 
       const job: SorobanTxJob = {
         contractMethod: 'register_blood',
@@ -141,16 +170,41 @@ describe('SorobanService', () => {
       };
 
       // First call succeeds
-      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(true);
+      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(
+        true,
+      );
       // Second call fails (duplicate)
-      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(false);
+      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(
+        false,
+      );
 
       const result1 = await service.submitTransaction(job);
-      expect(result1).toBe('job-123');
+      expect(result1).toBe(idempotencyKey);
 
       await expect(service.submitTransaction(job)).rejects.toThrow(
         'Duplicate submission',
       );
+    });
+  });
+
+  describe('submitTransactionAndWait', () => {
+    it('resolves with transaction hash when the worker completes', async () => {
+      const job: SorobanTxJob = {
+        contractMethod: 'register_verified_organization',
+        args: ['org-id', 'LIC', 'Name'],
+        idempotencyKey: 'wait-key-1',
+      };
+      mockTxQueue.getJob.mockResolvedValueOnce({
+        finished: jest.fn().mockResolvedValue({
+          success: true,
+          transactionHash: 'tx_completed',
+        }),
+      });
+
+      const result = await service.submitTransactionAndWait(job, 10_000);
+
+      expect(result.transactionHash).toBe('tx_completed');
+      expect(mockTxQueue.getJob).toHaveBeenCalledWith('wait-key-1');
     });
   });
 
@@ -334,20 +388,24 @@ describe('SorobanService', () => {
       };
 
       // First submission succeeds
-      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(true);
+      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(
+        true,
+      );
       const jobId1 = await service.submitTransaction(job);
-      expect(jobId1).toBe('job-123');
+      expect(jobId1).toBe(idempotencyKey);
 
       // Duplicate submission fails
-      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(false);
+      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(
+        false,
+      );
       await expect(service.submitTransaction(job)).rejects.toThrow(
         'Duplicate submission',
       );
 
       // Verify idempotency service was called
-      expect(mockIdempotencyService.checkAndSetIdempotencyKey).toHaveBeenCalledWith(
-        idempotencyKey,
-      );
+      expect(
+        mockIdempotencyService.checkAndSetIdempotencyKey,
+      ).toHaveBeenCalledWith(idempotencyKey);
     });
 
     it('should expose queue metrics for admin monitoring', async () => {
@@ -361,6 +419,33 @@ describe('SorobanService', () => {
       expect(typeof metrics.queueDepth).toBe('number');
       expect(typeof metrics.failedJobs).toBe('number');
       expect(typeof metrics.dlqCount).toBe('number');
+    });
+  });
+
+  describe('callback idempotency', () => {
+    it('should check and set callback idempotency via IdempotencyService', async () => {
+      mockIdempotencyService.checkAndSetIdempotencyKey.mockResolvedValueOnce(
+        true,
+      );
+
+      const result = await service.checkAndSetCallbackIdempotency('evt-1');
+
+      expect(result).toBe(true);
+      expect(
+        mockIdempotencyService.checkAndSetIdempotencyKey,
+      ).toHaveBeenCalledWith('callback:evt-1');
+    });
+
+    it('should process webhook callback without error', async () => {
+      await expect(
+        service.processWebhookCallback({
+          eventId: 'evt-1',
+          transactionHash: 'tx-1',
+          contractMethod: 'register_blood',
+          status: 'confirmed',
+          timestamp: new Date().toISOString(),
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 });

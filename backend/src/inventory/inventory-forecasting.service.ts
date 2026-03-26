@@ -1,16 +1,21 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 
-import { OrderEntity } from '../orders/entities/order.entity';
-import { InventoryEntity } from './entities/inventory.entity';
+import { Queue } from 'bullmq';
+import { Repository, MoreThanOrEqual } from 'typeorm';
+
 import { InventoryLowEvent } from '../events/inventory-low.event';
-import { DemandForecast, ForecastThreshold } from './interfaces/forecast.interface';
+import { OrderEntity } from '../orders/entities/order.entity';
+
+import { InventoryEntity } from './entities/inventory.entity';
+import {
+  DemandForecast,
+  ForecastThreshold,
+} from './interfaces/forecast.interface';
 
 @Injectable()
 export class InventoryForecastingService {
@@ -28,29 +33,40 @@ export class InventoryForecastingService {
     private readonly configService: ConfigService,
     @InjectQueue('donor-outreach') private readonly outreachQueue: Queue,
   ) {
-    this.defaultThreshold = Number(this.configService.get<number>('INVENTORY_FORECAST_THRESHOLD_DAYS', 3));
-    this.historyDays = Number(this.configService.get<number>('INVENTORY_FORECAST_HISTORY_DAYS', 30));
+    this.defaultThreshold = Number(
+      this.configService.get<number>('INVENTORY_FORECAST_THRESHOLD_DAYS', 3),
+    );
+    this.historyDays = Number(
+      this.configService.get<number>('INVENTORY_FORECAST_HISTORY_DAYS', 30),
+    );
     this.loadThresholds();
   }
 
   private loadThresholds() {
-    const thresholdsConfig = this.configService.get<string>('INVENTORY_FORECAST_THRESHOLDS');
+    const thresholdsConfig = this.configService.get<string>(
+      'INVENTORY_FORECAST_THRESHOLDS',
+    );
     if (thresholdsConfig) {
       try {
-        const parsed: ForecastThreshold[] = typeof thresholdsConfig === 'string'
-          ? JSON.parse(thresholdsConfig)
-          : thresholdsConfig;
-        parsed.forEach(t => {
+        const parsed: ForecastThreshold[] =
+          typeof thresholdsConfig === 'string'
+            ? JSON.parse(thresholdsConfig)
+            : thresholdsConfig;
+        parsed.forEach((t) => {
           this.thresholds.set(`${t.bloodType}:${t.region}`, t.daysThreshold);
         });
       } catch (err) {
-        this.logger.warn('Failed to parse INVENTORY_FORECAST_THRESHOLDS, using defaults');
+        this.logger.warn(
+          'Failed to parse INVENTORY_FORECAST_THRESHOLDS, using defaults',
+        );
       }
     }
   }
 
   private getThreshold(bloodType: string, region: string): number {
-    return this.thresholds.get(`${bloodType}:${region}`) || this.defaultThreshold;
+    return (
+      this.thresholds.get(`${bloodType}:${region}`) || this.defaultThreshold
+    );
   }
 
   @Cron(process.env.INVENTORY_FORECAST_CRON || CronExpression.EVERY_6_HOURS)
@@ -61,19 +77,24 @@ export class InventoryForecastingService {
       const forecasts = await this.calculateDemandForecasts();
 
       for (const forecast of forecasts) {
-        const threshold = this.getThreshold(forecast.bloodType, forecast.region);
+        const threshold = this.getThreshold(
+          forecast.bloodType,
+          forecast.region,
+        );
 
         if (forecast.projectedDaysOfSupply < threshold) {
           this.logger.warn(
             `Low inventory alert: ${forecast.bloodType} in ${forecast.region} - ` +
-            `${forecast.projectedDaysOfSupply.toFixed(1)} days remaining (threshold: ${threshold})`
+              `${forecast.projectedDaysOfSupply.toFixed(1)} days remaining (threshold: ${threshold})`,
           );
 
           await this.handleLowInventory(forecast, threshold);
         }
       }
 
-      this.logger.log(`Forecast complete. Processed ${forecasts.length} blood type/region combinations`);
+      this.logger.log(
+        `Forecast complete. Processed ${forecasts.length} blood type/region combinations`,
+      );
     } catch (error) {
       this.logger.error('Forecast failed', error);
     }
@@ -90,13 +111,20 @@ export class InventoryForecastingService {
       select: ['bloodType', 'quantity', 'deliveryAddress', 'createdAt'],
     });
 
-    const demandMap = new Map<string, { totalQuantity: number; count: number; currentStock: number }>();
+    const demandMap = new Map<
+      string,
+      { totalQuantity: number; count: number; currentStock: number }
+    >();
 
-    orders.forEach(order => {
+    orders.forEach((order) => {
       const region = this.extractRegion(order.deliveryAddress);
       const key = `${order.bloodType}:${region}`;
 
-      const existing = demandMap.get(key) || { totalQuantity: 0, count: 0, currentStock: 0 };
+      const existing = demandMap.get(key) || {
+        totalQuantity: 0,
+        count: 0,
+        currentStock: 0,
+      };
       existing.totalQuantity += order.quantity;
       existing.count += 1;
       demandMap.set(key, existing);
@@ -109,9 +137,8 @@ export class InventoryForecastingService {
       const averageDailyDemand = data.totalQuantity / this.historyDays;
       const currentStock = await this.getCurrentStock(bloodType, region);
 
-      const projectedDaysOfSupply = averageDailyDemand > 0
-        ? currentStock / averageDailyDemand
-        : Infinity;
+      const projectedDaysOfSupply =
+        averageDailyDemand > 0 ? currentStock / averageDailyDemand : Infinity;
 
       forecasts.push({
         bloodType,
@@ -125,7 +152,10 @@ export class InventoryForecastingService {
     return forecasts;
   }
 
-  private async handleLowInventory(forecast: DemandForecast, threshold: number) {
+  private async handleLowInventory(
+    forecast: DemandForecast,
+    threshold: number,
+  ) {
     const event = new InventoryLowEvent(
       forecast.bloodType,
       forecast.region,
@@ -142,16 +172,21 @@ export class InventoryForecastingService {
       region: forecast.region,
       urgency: forecast.projectedDaysOfSupply < 1 ? 'critical' : 'high',
       projectedDaysOfSupply: forecast.projectedDaysOfSupply,
-      requiredUnits: Math.ceil(forecast.averageDailyDemand * threshold - forecast.currentStock),
+      requiredUnits: Math.ceil(
+        forecast.averageDailyDemand * threshold - forecast.currentStock,
+      ),
     });
   }
 
   private extractRegion(address: string): string {
-    const parts = address.split(',').map(p => p.trim());
+    const parts = address.split(',').map((p) => p.trim());
     return parts[parts.length - 1] || 'Unknown';
   }
 
-  private async getCurrentStock(bloodType: string, region: string): Promise<number> {
+  private async getCurrentStock(
+    bloodType: string,
+    region: string,
+  ): Promise<number> {
     const inventory = await this.inventoryRepo.findOne({
       where: { bloodType, region },
     });

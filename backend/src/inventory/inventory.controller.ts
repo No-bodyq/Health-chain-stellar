@@ -10,11 +10,13 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { InventoryService } from './inventory.service';
+
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
+
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
+import { InventoryService } from './inventory.service';
 
 @Controller('inventory')
 export class InventoryController {
@@ -70,7 +72,10 @@ export class InventoryController {
 
   @RequirePermissions(Permission.UPDATE_INVENTORY)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateInventoryDto: UpdateInventoryDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateInventoryDto: UpdateInventoryDto,
+  ) {
     return this.inventoryService.update(id, updateInventoryDto);
   }
 
@@ -99,4 +104,3 @@ export class InventoryController {
     return this.inventoryService.remove(id);
   }
 }
-

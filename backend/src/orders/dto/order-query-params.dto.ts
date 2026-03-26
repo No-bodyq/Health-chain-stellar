@@ -1,5 +1,12 @@
-import { IsOptional, IsString, IsInt, Min, IsIn, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  IsOptional,
+  IsString,
+  IsInt,
+  Min,
+  IsIn,
+  IsDateString,
+} from 'class-validator';
 
 export class OrderQueryParamsDto {
   @IsString()

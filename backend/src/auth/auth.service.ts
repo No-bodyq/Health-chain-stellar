@@ -1,16 +1,31 @@
+import { randomBytes } from 'crypto';
+
 import {
   Injectable,
   UnauthorizedException,
   ConflictException,
   Inject,
   Logger,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { JwtPayload } from './jwt.strategy';
+import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+
 import Redis from 'ioredis';
+import { Repository } from 'typeorm';
+
 import { REDIS_CLIENT } from '../redis/redis.constants';
-import { randomBytes } from 'crypto';
+import { UserEntity } from '../users/entities/user.entity';
+
+import { JwtPayload } from './jwt.strategy';
+import { hashPassword, verifyPassword } from './utils/password.util';
+
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const ACCOUNT_LOCK_MINUTES = 15;
+const PASSWORD_HISTORY_LIMIT = 3;
 
 @Injectable()
 export class AuthService {
@@ -20,25 +35,59 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
-  ) { }
+    @InjectRepository(UserEntity)
+    private readonly userRepository: Repository<UserEntity>,
+  ) {}
 
-  async validateUser(email: string, password: string): Promise<unknown> {
-    // TODO: Query user from DB and verify hashed password
-    void email;
-    void password;
-    return null;
+  async validateUser(
+    email: string,
+    password: string,
+  ): Promise<UserEntity | null> {
+    const user = await this.userRepository.findOne({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user?.passwordHash) {
+      return null;
+    }
+
+    const valid = await verifyPassword(password, user.passwordHash);
+    return valid ? user : null;
   }
 
   async login(loginDto: { email: string; password: string; role?: string }) {
-    // TODO: Replace with real user lookup + bcrypt comparison
+    const user = await this.userRepository.findOne({
+      where: { email: loginDto.email.toLowerCase() },
+    });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    await this.ensureAccountIsUsable(user);
+
+    const passwordValid = await verifyPassword(
+      loginDto.password,
+      user.passwordHash,
+    );
+    if (!passwordValid) {
+      await this.recordFailedLoginAttempt(user);
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    await this.resetLoginAttempts(user);
+
+    const sessionId = randomBytes(16).toString('hex');
     const payload: JwtPayload = {
-      sub: 'placeholder-user-id',
-      email: loginDto.email,
-      role: loginDto.role ?? 'donor',
+      sub: user.id,
+      email: user.email,
+      role: user.role ?? loginDto.role ?? 'donor',
+      sid: sessionId,
     };
 
-    const accessToken = this.jwtService.sign(payload as unknown as Record<string, unknown>);
-    const refreshToken = await this.generateRefreshToken(payload);
+    const { accessToken, refreshToken, refreshExpiresInSeconds } =
+      await this.issueTokens(payload);
+    await this.createSession(user, sessionId, refreshExpiresInSeconds);
+    await this.enforceConcurrentSessionLimit(user.id);
 
     return {
       access_token: accessToken,
@@ -52,9 +101,33 @@ export class AuthService {
     role?: string;
     name?: string;
   }) {
-    // TODO: Hash password and persist user in DB; check for duplicate emails
-    void registerDto;
-    throw new ConflictException('Registration not yet implemented');
+    const email = registerDto.email.toLowerCase();
+    const existing = await this.userRepository.findOne({ where: { email } });
+    if (existing) {
+      throw new ConflictException('Email already registered');
+    }
+
+    const passwordHash = await hashPassword(registerDto.password);
+    const user = this.userRepository.create({
+      email,
+      name: registerDto.name,
+      role: registerDto.role ?? 'donor',
+      passwordHash,
+      passwordHistory: [],
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+    const savedUser = await this.userRepository.save(user);
+
+    return {
+      message: 'Registration successful',
+      user: {
+        id: savedUser.id,
+        email: savedUser.email,
+        role: savedUser.role,
+        name: savedUser.name,
+      },
+    };
   }
 
   async refreshToken(refreshToken: string) {
@@ -66,30 +139,58 @@ export class AuthService {
         ),
       });
 
-      // Atomic consumption using Redis SET NX
-      // Use the refresh token itself as the key (or its hash if it's extremely long)
-      const tokenKey = `refresh_token:${refreshToken}`;
-      const expiresAt = payload.exp ? payload.exp - Math.floor(Date.now() / 1000) : 604800;
+      const tokenKey = `auth:refresh-consumed:${refreshToken}`;
+      const expiresAt = payload.exp
+        ? payload.exp - Math.floor(Date.now() / 1000)
+        : this.getRefreshTokenExpirySeconds();
       const ttl = Math.max(expiresAt, 0);
 
       // set(key, value, 'EX', ttl, 'NX') returns 'OK' if set, null if exists
-      const consumed = await this.redis.set(tokenKey, '1', 'EX', ttl || 604800, 'NX');
+      const consumed = await this.redis.set(
+        tokenKey,
+        '1',
+        'EX',
+        ttl || 604800,
+        'NX',
+      );
 
       if (!consumed) {
-        this.logger.warn(`Replay attack detected for user ${payload.email}. Token already consumed.`);
+        this.logger.warn(
+          `Replay attack detected for user ${payload.email}. Token already consumed.`,
+        );
         throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
       }
 
-      this.logger.log(`Refresh token consumed for user ${payload.email}. Rotating tokens.`);
+      if (!payload.sid) {
+        throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
+      }
+
+      const existingSession = await this.getSessionById(payload.sid);
+      if (!existingSession || existingSession.revokedAt) {
+        throw new UnauthorizedException('SESSION_REVOKED');
+      }
+
+      this.logger.log(
+        `Refresh token consumed for user ${payload.email}. Rotating tokens.`,
+      );
 
       const newPayload: JwtPayload = {
         sub: payload.sub,
         email: payload.email,
         role: payload.role,
+        sid: payload.sid,
       };
 
-      const newAccessToken = this.jwtService.sign(newPayload);
-      const newRefreshToken = await this.generateRefreshToken(newPayload);
+      const {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        refreshExpiresInSeconds,
+      } = await this.issueTokens(newPayload);
+      await this.touchSession(
+        payload.sub,
+        payload.sid,
+        refreshExpiresInSeconds,
+      );
 
       return {
         access_token: newAccessToken,
@@ -104,6 +205,22 @@ export class AuthService {
     }
   }
 
+  private async issueTokens(payload: JwtPayload): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    refreshExpiresInSeconds: number;
+  }> {
+    const accessToken = this.jwtService.sign(
+      payload as unknown as Record<string, unknown>,
+    );
+    const refreshToken = await this.generateRefreshToken(payload);
+    return {
+      accessToken,
+      refreshToken,
+      refreshExpiresInSeconds: this.getRefreshTokenExpirySeconds(),
+    };
+  }
+
   private async generateRefreshToken(payload: JwtPayload): Promise<string> {
     const jti = randomBytes(16).toString('hex');
     const refreshExpiresIn =
@@ -113,8 +230,9 @@ export class AuthService {
       { ...payload, jti } as unknown as Record<string, unknown>,
       {
         secret:
-          this.configService.get<string>('JWT_REFRESH_SECRET') ?? 'refresh-secret',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          this.configService.get<string>('JWT_REFRESH_SECRET') ??
+          'refresh-secret',
+
         expiresIn: refreshExpiresIn as any,
       },
     );
@@ -122,9 +240,240 @@ export class AuthService {
     return refreshToken;
   }
 
-  async logout(userId: string) {
-    // TODO: Blacklist the token / clear refresh token from DB
-    void userId;
+  async logout(userId: string, sessionId?: string) {
+    if (sessionId) {
+      await this.revokeSession(userId, sessionId);
+      return { message: 'Logged out successfully' };
+    }
+
+    const sessionIds = await this.redis.zrange(
+      this.userSessionsKey(userId),
+      0,
+      -1,
+    );
+    await Promise.all(sessionIds.map((sid) => this.revokeSession(userId, sid)));
     return { message: 'Logged out successfully' };
+  }
+
+  async getActiveSessions(userId: string) {
+    const sessionIds = await this.redis.zrevrange(
+      this.userSessionsKey(userId),
+      0,
+      -1,
+    );
+    const sessions = await Promise.all(
+      sessionIds.map((sid) => this.getSessionById(sid)),
+    );
+    return sessions.filter((session) => session && !session.revokedAt);
+  }
+
+  async revokeSession(userId: string, sessionId: string) {
+    const session = await this.getSessionById(sessionId);
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+    if (session.userId !== userId) {
+      throw new ForbiddenException('Cannot revoke a session that is not yours');
+    }
+
+    await this.redis.hset(
+      this.sessionKey(sessionId),
+      'revokedAt',
+      new Date().toISOString(),
+    );
+    await this.redis.zrem(this.userSessionsKey(userId), sessionId);
+
+    return { message: 'Session revoked successfully' };
+  }
+
+  async manualUnlockByAdmin(userId: string) {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    await this.userRepository.save(user);
+
+    return { message: 'Account unlocked successfully' };
+  }
+
+  async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+  ) {
+    if (oldPassword === newPassword) {
+      throw new BadRequestException(
+        'New password must be different from old password',
+      );
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      throw new NotFoundException('User not found');
+    }
+
+    const oldPasswordValid = await verifyPassword(
+      oldPassword,
+      user.passwordHash,
+    );
+    if (!oldPasswordValid) {
+      throw new UnauthorizedException('Old password is incorrect');
+    }
+
+    const recentHashes = [
+      user.passwordHash,
+      ...(user.passwordHistory ?? []),
+    ].slice(0, PASSWORD_HISTORY_LIMIT);
+    for (const hash of recentHashes) {
+      if (await verifyPassword(newPassword, hash)) {
+        throw new BadRequestException(
+          `Cannot reuse any of your last ${PASSWORD_HISTORY_LIMIT} passwords`,
+        );
+      }
+    }
+
+    const newHash = await hashPassword(newPassword);
+    user.passwordHistory = [
+      user.passwordHash,
+      ...(user.passwordHistory ?? []),
+    ].slice(0, PASSWORD_HISTORY_LIMIT);
+    user.passwordHash = newHash;
+    await this.userRepository.save(user);
+
+    return { message: 'Password changed successfully' };
+  }
+
+  private async ensureAccountIsUsable(user: UserEntity) {
+    if (!user.lockedUntil) {
+      return;
+    }
+
+    const now = Date.now();
+    const lockedUntil = user.lockedUntil.getTime();
+    if (lockedUntil <= now) {
+      user.lockedUntil = null;
+      user.failedLoginAttempts = 0;
+      await this.userRepository.save(user);
+      return;
+    }
+
+    throw new ForbiddenException('Account is locked. Please try again later');
+  }
+
+  private async recordFailedLoginAttempt(user: UserEntity) {
+    user.failedLoginAttempts = (user.failedLoginAttempts ?? 0) + 1;
+    if (user.failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+      const lockedUntil = new Date();
+      lockedUntil.setMinutes(lockedUntil.getMinutes() + ACCOUNT_LOCK_MINUTES);
+      user.lockedUntil = lockedUntil;
+    }
+    await this.userRepository.save(user);
+  }
+
+  private async resetLoginAttempts(user: UserEntity) {
+    if (!user.failedLoginAttempts && !user.lockedUntil) {
+      return;
+    }
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    await this.userRepository.save(user);
+  }
+
+  private async createSession(
+    user: UserEntity,
+    sessionId: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const now = Date.now();
+    const expiresAt = new Date(now + ttlSeconds * 1000).toISOString();
+    await this.redis.hmset(this.sessionKey(sessionId), {
+      userId: user.id,
+      email: user.email,
+      role: user.role ?? 'donor',
+      createdAt: new Date(now).toISOString(),
+      expiresAt,
+    });
+    await this.redis.expire(this.sessionKey(sessionId), ttlSeconds);
+    await this.redis.zadd(this.userSessionsKey(user.id), now, sessionId);
+  }
+
+  private async touchSession(
+    userId: string,
+    sessionId: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const key = this.sessionKey(sessionId);
+    await this.redis.hset(
+      key,
+      'expiresAt',
+      new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+    );
+    await this.redis.expire(key, ttlSeconds);
+    await this.redis.zadd(this.userSessionsKey(userId), Date.now(), sessionId);
+  }
+
+  private async getSessionById(
+    sessionId: string,
+  ): Promise<Record<string, string> | null> {
+    const session = await this.redis.hgetall(this.sessionKey(sessionId));
+    if (!session || Object.keys(session).length === 0) {
+      return null;
+    }
+    return session;
+  }
+
+  private async enforceConcurrentSessionLimit(userId: string): Promise<void> {
+    const maxSessions = this.configService.get<number>(
+      'MAX_CONCURRENT_SESSIONS',
+      3,
+    );
+    const sessionCount = await this.redis.zcard(this.userSessionsKey(userId));
+    if (sessionCount <= maxSessions) {
+      return;
+    }
+
+    const sessionsToEvict = await this.redis.zrange(
+      this.userSessionsKey(userId),
+      0,
+      sessionCount - maxSessions - 1,
+    );
+    for (const sessionId of sessionsToEvict) {
+      await this.redis.del(this.sessionKey(sessionId));
+      await this.redis.zrem(this.userSessionsKey(userId), sessionId);
+    }
+  }
+
+  private sessionKey(sessionId: string): string {
+    return `auth:session:${sessionId}`;
+  }
+
+  private userSessionsKey(userId: string): string {
+    return `auth:user-sessions:${userId}`;
+  }
+
+  private getRefreshTokenExpirySeconds(): number {
+    const refreshExpiresIn =
+      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+    return this.parseDurationToSeconds(refreshExpiresIn);
+  }
+
+  private parseDurationToSeconds(value: string): number {
+    const match = /^(\d+)([smhd])$/.exec(value.trim());
+    if (!match) {
+      return 7 * 24 * 60 * 60;
+    }
+
+    const amount = Number(match[1]);
+    const unit = match[2];
+    const multipliers: Record<string, number> = {
+      s: 1,
+      m: 60,
+      h: 60 * 60,
+      d: 24 * 60 * 60,
+    };
+    return amount * multipliers[unit];
   }
 }

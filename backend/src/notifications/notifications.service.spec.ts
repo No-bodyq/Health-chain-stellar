@@ -1,12 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { getQueueToken } from '@nestjs/bullmq';
 import { NotFoundException } from '@nestjs/common';
-import { NotificationsService } from './notifications.service';
-import { NotificationEntity } from './entities/notification.entity';
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+
 import { NotificationTemplateEntity } from './entities/notification-template.entity';
+import { NotificationEntity } from './entities/notification.entity';
 import { NotificationChannel } from './enums/notification-channel.enum';
 import { NotificationStatus } from './enums/notification-status.enum';
+import { NotificationsService } from './notifications.service';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;

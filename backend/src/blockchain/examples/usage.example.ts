@@ -1,11 +1,12 @@
 /**
  * Example: Using the Soroban Transaction Queue
- * 
+ *
  * This file demonstrates how to use the transaction queue system
  * in your NestJS controllers and services.
  */
 
 import { Injectable } from '@nestjs/common';
+
 import { SorobanService } from '../services/soroban.service';
 import { SorobanTxJob } from '../types/soroban-tx.types';
 
@@ -94,7 +95,7 @@ export class BloodBankService {
 
   /**
    * Example 4: Handling concurrent duplicate submissions
-   * 
+   *
    * This demonstrates how the system prevents duplicate submissions
    * even when requests arrive simultaneously.
    */
@@ -158,6 +159,7 @@ export class BloodBankService {
  * Example Controller Usage
  */
 import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
+
 import { AdminGuard } from '../guards/admin.guard';
 
 @Controller('blood-bank')

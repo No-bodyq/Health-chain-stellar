@@ -10,7 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { RidersService } from './riders.service';
+
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
 import { CreateRiderDto } from './dto/create-rider.dto';
@@ -18,6 +18,8 @@ import { UpdateRiderDto } from './dto/update-rider.dto';
 import { RegisterRiderDto } from './dto/register-rider.dto';
 import { RiderStatus } from './enums/rider-status.enum';
 import { User } from '../auth/decorators/user.decorator';
+
+import { RidersService } from './riders.service';
 
 @Controller('riders')
 export class RidersController {

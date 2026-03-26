@@ -1,6 +1,7 @@
 /// <reference types="jest" />
-import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+
 import { AdminGuard } from '../guards/admin.guard';
 
 describe('AdminGuard', () => {

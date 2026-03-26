@@ -9,11 +9,13 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { Response } from 'express';
-import { UssdService } from './ussd.service';
-import { UssdSessionDto } from './ussd.dto';
-import { UssdRequest } from './ussd.types';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+
+import { UssdSessionDto } from './ussd.dto';
+import { UssdService } from './ussd.service';
+import { UssdRequest } from './ussd.types';
+
+import type { Response } from 'express';
 
 @ApiTags('USSD')
 @Controller('ussd')
@@ -30,8 +32,11 @@ export class UssdController {
   @Post('session')
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-  @ApiOperation({ summary: 'Handle Africa\'s Talking USSD session callback' })
-  @ApiResponse({ status: 200, description: 'USSD response text (CON/END prefixed)' })
+  @ApiOperation({ summary: "Handle Africa's Talking USSD session callback" })
+  @ApiResponse({
+    status: 200,
+    description: 'USSD response text (CON/END prefixed)',
+  })
   async handleSession(
     @Body() dto: UssdSessionDto,
     @Res() res: Response,

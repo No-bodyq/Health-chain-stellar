@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { Repository } from 'typeorm';
+
 import { InventoryLowEvent } from '../events/inventory-low.event';
+import { NotificationChannel } from '../notifications/enums/notification-channel.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UserEntity } from '../users/entities/user.entity';
-import { NotificationChannel } from '../notifications/enums/notification-channel.enum';
 
 @Injectable()
 export class InventoryEventListener {
@@ -15,19 +17,21 @@ export class InventoryEventListener {
     private readonly notificationsService: NotificationsService,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
-  ) { }
+  ) {}
 
   @OnEvent('inventory.low')
   async handleInventoryLow(event: InventoryLowEvent) {
     this.logger.log(
       `Handling low inventory: ${event.bloodType} in ${event.region} - ` +
-      `${event.projectedDaysOfSupply.toFixed(1)} days remaining`
+        `${event.projectedDaysOfSupply.toFixed(1)} days remaining`,
     );
 
     const adminRecipients = await this.getAdminRecipients(event.region);
 
     if (adminRecipients.length === 0) {
-      this.logger.warn(`No admins found for region: ${event.region}. Sending to global admins.`);
+      this.logger.warn(
+        `No admins found for region: ${event.region}. Sending to global admins.`,
+      );
       const globalAdmins = await this.getAdminRecipients('Global');
       adminRecipients.push(...globalAdmins);
     }
@@ -58,6 +62,6 @@ export class InventoryEventListener {
       select: ['id'],
     });
 
-    return admins.map(admin => admin.id);
+    return admins.map((admin) => admin.id);
   }
 }

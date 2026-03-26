@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+
 import { UssdController } from './ussd.controller';
-import { UssdService } from './ussd.service';
 import { UssdSessionDto } from './ussd.dto';
+import { UssdService } from './ussd.service';
 
 describe('UssdController', () => {
   let controller: UssdController;
@@ -28,7 +29,10 @@ describe('UssdController', () => {
   });
 
   it('returns CON plain-text response for continuing sessions', async () => {
-    ussdService.handleSession.mockResolvedValue({ type: 'CON', message: 'Select blood type' });
+    ussdService.handleSession.mockResolvedValue({
+      type: 'CON',
+      message: 'Select blood type',
+    });
     const dto: UssdSessionDto = {
       sessionId: 'sess-001',
       serviceCode: '*123#',
@@ -44,7 +48,10 @@ describe('UssdController', () => {
   });
 
   it('returns END plain-text response for terminal sessions', async () => {
-    ussdService.handleSession.mockResolvedValue({ type: 'END', message: 'Order placed!' });
+    ussdService.handleSession.mockResolvedValue({
+      type: 'END',
+      message: 'Order placed!',
+    });
     const dto: UssdSessionDto = {
       sessionId: 'sess-001',
       serviceCode: '*123#',
@@ -59,7 +66,10 @@ describe('UssdController', () => {
   });
 
   it('forwards all DTO fields to UssdService', async () => {
-    ussdService.handleSession.mockResolvedValue({ type: 'CON', message: 'Welcome' });
+    ussdService.handleSession.mockResolvedValue({
+      type: 'CON',
+      message: 'Welcome',
+    });
     const dto: UssdSessionDto = {
       sessionId: 'sess-abc',
       serviceCode: '*321#',

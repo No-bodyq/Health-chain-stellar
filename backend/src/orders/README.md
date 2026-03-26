@@ -1,153 +1,426 @@
-# Orders Module - Enhanced with Filtering and Pagination
+# Orders Module
 
-This module has been enhanced to support the Hospital Order History Dashboard feature with comprehensive filtering, sorting, and pagination capabilities.
+Blood order management with state machine, event sourcing, real-time WebSocket updates, and inventory integration.
 
-## Features Implemented
+## Architecture
 
-### 1. DTOs (Data Transfer Objects)
+### Core Components
 
-#### OrderQueryParamsDto
-Located in `dto/order-query-params.dto.ts`
+- **OrdersService**: Order lifecycle management and state transitions
+- **OrderStateMachine**: Enforces valid status transitions
+- **OrderEventStoreService**: Immutable audit log (event sourcing)
+- **OrdersGateway**: WebSocket real-time updates
+- **OrdersController**: REST API for order operations
 
-Query parameters for filtering and pagination:
-- `hospitalId` (required): Filter orders by hospital
-- `startDate` (optional): Start date for date range filter (ISO 8601)
-- `endDate` (optional): End date for date range filter (ISO 8601)
-- `bloodTypes` (optional): Comma-separated blood types (e.g., "A+,O-,B+")
-- `statuses` (optional): Comma-separated statuses (e.g., "pending,confirmed")
-- `bloodBank` (optional): Blood bank name search (case-insensitive partial match)
-- `sortBy` (optional): Column to sort by (default: "placedAt")
-- `sortOrder` (optional): Sort order "asc" or "desc" (default: "desc")
-- `page` (optional): Page number (default: 1)
-- `pageSize` (optional): Items per page - 25, 50, or 100 (default: 25)
+### State Machine
 
-#### OrdersResponseDto
-Located in `dto/orders-response.dto.ts`
-
-Response format with pagination metadata:
-```typescript
-{
-  data: Order[],
-  pagination: {
-    currentPage: number,
-    pageSize: number,
-    totalCount: number,
-    totalPages: number
-  }
-}
+Valid transitions:
+```
+PENDING → CONFIRMED → DISPATCHED → IN_TRANSIT → DELIVERED
+   ↓                                    ↓
+CANCELLED                           DISPUTED → RESOLVED → DELIVERED/CANCELLED
 ```
 
-### 2. Type Definitions
+Invalid transitions throw `OrderTransitionException`.
 
-Located in `types/order.types.ts`
+### Event Sourcing
 
-- `BloodType`: Union type for blood types
-- `OrderStatus`: Union type for order statuses
-- `Order`: Complete order interface
-- `BloodBankInfo`, `HospitalInfo`, `RiderInfo`: Supporting interfaces
+Every state change is recorded as an immutable event in `order_events` table:
+- `ORDER_CREATED`
+- `ORDER_CONFIRMED`
+- `ORDER_DISPATCHED`
+- `ORDER_IN_TRANSIT`
+- `ORDER_DELIVERED`
+- `ORDER_CANCELLED`
+- `ORDER_DISPUTED`
+- `ORDER_RESOLVED`
 
-### 3. Service Methods
+Benefits:
+- Complete audit trail
+- State replay capability
+- Debugging and compliance
+- Analytics and reporting
 
-#### findAllWithFilters(params: OrderQueryParamsDto)
+## Public API
 
-Comprehensive filtering and pagination method that:
-
-1. **Filters by hospital**: Only returns orders for the specified hospital
-2. **Date range filtering**: Filters orders where `placedAt` is within the specified range
-3. **Blood type filtering**: Multi-select filter for blood types
-4. **Status filtering**: Multi-select filter for order statuses
-5. **Blood bank search**: Case-insensitive partial match on blood bank name
-6. **Active orders prioritization**: Orders with status "pending", "confirmed", or "in_transit" appear first
-7. **Column sorting**: Sorts by specified column in ascending or descending order
-8. **Pagination**: Returns paginated results with metadata
-
-### 4. Controller Endpoint
+### Endpoints
 
 #### GET /orders
+List orders with advanced filtering and pagination.
 
-Enhanced endpoint that accepts all query parameters defined in `OrderQueryParamsDto`.
+**Query Params:**
+- `hospitalId`: Filter by hospital
+- `startDate`: ISO date (e.g., 2024-01-01)
+- `endDate`: ISO date
+- `bloodTypes`: Comma-separated (e.g., "A+,O-")
+- `statuses`: Comma-separated (e.g., "pending,confirmed")
+- `bloodBank`: Partial name match
+- `sortBy`: Field to sort by (default: placedAt)
+- `sortOrder`: asc or desc (default: desc)
+- `page`: Page number (default: 1)
+- `pageSize`: Items per page (default: 25)
 
-Example request:
-```
-GET /orders?hospitalId=HOSP-001&startDate=2024-01-01&endDate=2024-01-31&bloodTypes=A+,O-&statuses=pending,confirmed&page=1&pageSize=25
-```
-
-Example response:
+**Response:** `200 OK`
 ```json
 {
   "data": [
     {
-      "id": "ORD-001",
+      "id": "uuid",
+      "hospitalId": "uuid",
+      "bloodBankId": "uuid",
       "bloodType": "A+",
       "quantity": 5,
-      "bloodBank": {
-        "id": "BB-001",
-        "name": "Central Blood Bank",
-        "location": "Lagos"
-      },
-      "hospital": {
-        "id": "HOSP-001",
-        "name": "General Hospital",
-        "location": "Ikeja"
-      },
-      "status": "in_transit",
-      "rider": {
-        "id": "RIDER-001",
-        "name": "John Doe",
-        "phone": "+234-XXX-XXXX"
-      },
-      "placedAt": "2024-01-15T10:30:00Z",
-      "deliveredAt": null,
-      "confirmedAt": "2024-01-15T10:35:00Z",
-      "cancelledAt": null,
-      "createdAt": "2024-01-15T10:30:00Z",
-      "updatedAt": "2024-01-15T11:00:00Z"
+      "status": "confirmed",
+      "deliveryAddress": "123 Main St, Nairobi",
+      "riderId": "uuid",
+      "placedAt": "2024-01-01T00:00:00Z"
     }
   ],
   "pagination": {
     "currentPage": 1,
     "pageSize": 25,
-    "totalCount": 150,
-    "totalPages": 6
+    "totalCount": 100,
+    "totalPages": 4
   }
 }
 ```
 
-### 5. Database Indexes
+#### GET /orders/:id
+Get single order details.
 
-When a database is configured, run the migration in `migrations/add-orders-indexes.sql` to add the following indexes for optimal performance:
+**Response:** `200 OK`
 
-- `idx_orders_hospital_id`: For hospital filtering
-- `idx_orders_placed_at`: For date sorting and filtering
-- `idx_orders_status`: For status filtering
-- `idx_orders_blood_type`: For blood type filtering
-- `idx_orders_hospital_placed_at`: Composite index for common query pattern
-- `idx_orders_hospital_status`: Composite index for active orders queries
-- `idx_orders_blood_bank_name`: For blood bank name search
+#### GET /orders/:id/history
+Get complete audit log for an order.
 
-## Implementation Notes
+**Response:** `200 OK`
+```json
+[
+  {
+    "id": "uuid",
+    "orderId": "uuid",
+    "eventType": "ORDER_CREATED",
+    "payload": { "bloodType": "A+", "quantity": 5 },
+    "actorId": "uuid",
+    "timestamp": "2024-01-01T00:00:00Z"
+  },
+  {
+    "eventType": "ORDER_CONFIRMED",
+    "timestamp": "2024-01-01T00:05:00Z"
+  }
+]
+```
 
-### Active Orders Prioritization
+#### GET /orders/:id/track
+Get order status with event replay verification.
 
-The sorting logic ensures that active orders (pending, confirmed, in_transit) always appear before completed orders (delivered, cancelled), regardless of the sort column. Within each group (active/completed), orders are sorted according to the specified column and order.
+**Response:** `200 OK`
+```json
+{
+  "id": "uuid",
+  "status": "in_transit",
+  "replayedStatus": "in_transit"
+}
+```
 
-### Page Size Validation
+#### POST /orders
+Create a new order.
 
-The `pageSize` parameter is validated to only accept values of 25, 50, or 100. Any other value will result in a validation error.
+**Permissions:** `CREATE_ORDER`
 
-### Case-Insensitive Search
+**Request:**
+```json
+{
+  "hospitalId": "uuid",
+  "bloodBankId": "uuid",
+  "bloodType": "A+",
+  "quantity": 5,
+  "deliveryAddress": "123 Main St, Nairobi"
+}
+```
 
-The blood bank name filter performs a case-insensitive partial match, allowing users to search for "central" and match "Central Blood Bank".
+**Response:** `201 Created`
 
-### Mock Data Store
+**Behavior:**
+- Reserves inventory automatically
+- Creates order in PENDING status
+- Records ORDER_CREATED event
 
-Currently, the service uses an in-memory array (`private orders: Order[] = []`) as a mock data store. In production, this should be replaced with actual database queries using an ORM like TypeORM or Prisma.
+#### PATCH /orders/:id
+Update order details (non-status fields).
 
-## Next Steps
+**Permissions:** `UPDATE_ORDER`
 
-1. **Database Integration**: Replace the mock data store with actual database queries
-2. **WebSocket Gateway**: Implement real-time order status updates (Task 2)
-3. **Frontend Integration**: Build the dashboard UI components (Tasks 3-5)
-4. **Testing**: Add unit tests and property-based tests for filtering logic
-5. **Authentication**: Add authentication guards to protect the endpoint
-6. **Authorization**: Ensure users can only access orders for their own hospital
+**Request:**
+```json
+{
+  "deliveryAddress": "456 New St, Nairobi"
+}
+```
+
+**Response:** `200 OK`
+
+#### PATCH /orders/:id/status
+Transition order to new status.
+
+**Permissions:** `UPDATE_ORDER`
+
+**Request:**
+```json
+{
+  "status": "confirmed"
+}
+```
+
+**Response:** `200 OK`
+
+**Errors:**
+- `400 Bad Request`: Invalid transition (e.g., DELIVERED → PENDING)
+
+#### PATCH /orders/:id/assign-rider
+Assign a dispatch rider to an order.
+
+**Permissions:** `MANAGE_RIDERS`
+
+**Request:**
+```json
+{
+  "riderId": "uuid"
+}
+```
+
+**Response:** `200 OK`
+
+#### PATCH /orders/:id/raise-dispute
+Raise a dispute for an order.
+
+**Permissions:** `UPDATE_ORDER`
+
+**Request:**
+```json
+{
+  "reason": "Damaged units received",
+  "disputeId": "uuid"
+}
+```
+
+**Response:** `200 OK`
+
+#### PATCH /orders/:id/resolve-dispute
+Resolve a disputed order.
+
+**Permissions:** `UPDATE_ORDER`
+
+**Request:**
+```json
+{
+  "resolution": "REFUND"  // or "DELIVERED"
+}
+```
+
+**Response:** `200 OK`
+
+**Behavior:**
+- `REFUND`: Transitions to CANCELLED
+- `DELIVERED`: Transitions to DELIVERED
+
+#### DELETE /orders/:id
+Cancel an order.
+
+**Permissions:** `DELETE_ORDER`
+
+**Response:** `204 No Content`
+
+**Behavior:**
+- Transitions order to CANCELLED
+- Releases reserved inventory
+- Cannot cancel delivered orders
+
+## WebSocket Events
+
+### Connection
+
+```javascript
+const socket = io('http://localhost:3000', {
+  auth: { token: 'jwt-access-token' }
+});
+```
+
+### order.status.updated
+
+Emitted when any order status changes.
+
+**Payload:**
+```json
+{
+  "orderId": "uuid",
+  "previousStatus": "confirmed",
+  "newStatus": "dispatched",
+  "eventType": "ORDER_DISPATCHED",
+  "actorId": "uuid",
+  "timestamp": "2024-01-01T00:10:00Z"
+}
+```
+
+**Client Usage:**
+```javascript
+socket.on('order.status.updated', (data) => {
+  console.log(`Order ${data.orderId}: ${data.previousStatus} → ${data.newStatus}`);
+  // Update UI
+});
+```
+
+## Domain Events
+
+Internal NestJS events for cross-module communication:
+
+- `order.confirmed`: Triggers blockchain recording
+- `order.dispatched`: Notifies dispatch service
+- `order.in_transit`: Updates tracking service
+- `order.delivered`: Releases inventory, updates metrics
+- `order.cancelled`: Releases reserved inventory
+- `order.disputed`: Creates dispute record
+- `order.resolved`: Closes dispute
+- `order.rider.assigned`: Notifies rider
+
+## Usage
+
+### Creating an Order
+
+```typescript
+import { OrdersService } from './orders/orders.service';
+
+@Injectable()
+export class HospitalService {
+  constructor(private ordersService: OrdersService) {}
+
+  async placeOrder(hospitalId: string, orderData: any) {
+    // Inventory is automatically reserved
+    const result = await this.ordersService.create(
+      {
+        hospitalId,
+        bloodBankId: orderData.bloodBankId,
+        bloodType: orderData.bloodType,
+        quantity: orderData.quantity,
+        deliveryAddress: orderData.address,
+      },
+      hospitalId, // actorId
+    );
+
+    return result.data;
+  }
+}
+```
+
+### Transitioning Order Status
+
+```typescript
+// Confirm order
+await ordersService.updateStatus(orderId, 'confirmed', adminId);
+
+// Dispatch order
+await ordersService.updateStatus(orderId, 'dispatched', dispatcherId);
+
+// Mark in transit
+await ordersService.updateStatus(orderId, 'in_transit', riderId);
+
+// Complete delivery
+await ordersService.updateStatus(orderId, 'delivered', riderId);
+```
+
+### Listening to Order Events
+
+```typescript
+import { OnEvent } from '@nestjs/event-emitter';
+import { OrderConfirmedEvent } from './events';
+
+@Injectable()
+export class BlockchainListener {
+  @OnEvent('order.confirmed')
+  async handleOrderConfirmed(event: OrderConfirmedEvent) {
+    // Record on blockchain
+    await this.sorobanService.submitTransaction({
+      contractMethod: 'record_order',
+      args: {
+        orderId: event.orderId,
+        bloodType: event.bloodType,
+        quantity: event.quantity,
+      },
+      idempotencyKey: `order-${event.orderId}`,
+    });
+  }
+}
+```
+
+## Data Models
+
+### OrderEntity
+- `id`: UUID
+- `hospitalId`: Requesting hospital
+- `bloodBankId`: Supplying blood bank
+- `bloodType`: Blood type (A+, A-, B+, B-, AB+, AB-, O+, O-)
+- `quantity`: Number of units
+- `status`: Current status (enum)
+- `deliveryAddress`: Delivery location
+- `riderId`: Assigned dispatch rider
+- `disputeId`: Dispute reference (if any)
+- `disputeReason`: Dispute description
+- `placedAt`: Order creation timestamp
+- `deliveredAt`: Delivery completion timestamp
+
+### OrderEventEntity
+- `id`: UUID
+- `orderId`: Order reference
+- `eventType`: Event type (enum)
+- `payload`: Event data (JSON)
+- `actorId`: User who triggered the event
+- `timestamp`: Event timestamp
+
+## State Machine Rules
+
+- PENDING can transition to: CONFIRMED, CANCELLED
+- CONFIRMED can transition to: DISPATCHED, CANCELLED
+- DISPATCHED can transition to: IN_TRANSIT, DISPUTED
+- IN_TRANSIT can transition to: DELIVERED, DISPUTED
+- DISPUTED can transition to: RESOLVED
+- RESOLVED can transition to: DELIVERED, CANCELLED
+- DELIVERED and CANCELLED are terminal states
+
+## Testing
+
+```bash
+# Unit tests
+npm test -- orders
+
+# Integration tests
+npm test -- orders.service.spec
+
+# Contract tests
+npm run test:contracts
+```
+
+## Best Practices
+
+- Always use `updateStatus()` for state changes (never update status directly)
+- Check inventory availability before creating orders
+- Assign riders before dispatching
+- Use event history for debugging and compliance
+- Monitor WebSocket connections for real-time updates
+- Handle `OrderTransitionException` gracefully in UI
+- Log all state transitions with actorId for audit trail
+
+## Performance Considerations
+
+- Index on `hospitalId`, `bloodBankId`, `status`, `placedAt`
+- Paginate large result sets (default: 25 items)
+- Cache aggregation queries
+- Use WebSocket for real-time updates (avoid polling)
+- Archive old orders to separate table after 1 year
+
+## Security
+
+- All endpoints require authentication
+- Permission-based access control per operation
+- Actor ID tracked for all state changes
+- WebSocket connections require JWT authentication
+- Validate state transitions server-side (never trust client)

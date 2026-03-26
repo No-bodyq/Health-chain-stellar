@@ -13,11 +13,13 @@ import {
   Request,
   ValidationPipe,
 } from '@nestjs/common';
-import { OrdersService } from './orders.service';
-import { OrderQueryParamsDto } from './dto/order-query-params.dto';
-import { OrdersResponseDto } from './dto/orders-response.dto';
+
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
+
+import { OrderQueryParamsDto } from './dto/order-query-params.dto';
+import { OrdersResponseDto } from './dto/orders-response.dto';
+import { OrdersService } from './orders.service';
 
 @Controller('orders')
 export class OrdersController {

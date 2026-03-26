@@ -1,5 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UssdSessionStore, REDIS_CLIENT, USSD_SESSION_TTL_SECONDS } from './ussd-session.store';
+
+import {
+  UssdSessionStore,
+  REDIS_CLIENT,
+  USSD_SESSION_TTL_SECONDS,
+} from './ussd-session.store';
 import { UssdSession, UssdStep } from './ussd.types';
 
 describe('UssdSessionStore', () => {
@@ -40,7 +45,10 @@ describe('UssdSessionStore', () => {
     it('returns parsed session when key exists', async () => {
       redisMock.get.mockResolvedValue(JSON.stringify(mockSession));
       const result = await store.get('sess-001');
-      expect(result).toMatchObject({ sessionId: 'sess-001', step: UssdStep.LOGIN_PHONE });
+      expect(result).toMatchObject({
+        sessionId: 'sess-001',
+        step: UssdStep.LOGIN_PHONE,
+      });
       expect(redisMock.get).toHaveBeenCalledWith('ussd:session:sess-001');
     });
 
@@ -74,13 +82,17 @@ describe('UssdSessionStore', () => {
       const before = Date.now();
       const session = { ...mockSession, updatedAt: 0 };
       await store.set(session);
-      const stored = JSON.parse(redisMock.setex.mock.calls[0][2]) as UssdSession;
+      const stored = JSON.parse(
+        redisMock.setex.mock.calls[0][2],
+      ) as UssdSession;
       expect(stored.updatedAt).toBeGreaterThanOrEqual(before);
     });
 
     it('throws when Redis fails', async () => {
       redisMock.setex.mockRejectedValue(new Error('Redis error'));
-      await expect(store.set({ ...mockSession })).rejects.toThrow('Redis error');
+      await expect(store.set({ ...mockSession })).rejects.toThrow(
+        'Redis error',
+      );
     });
   });
 

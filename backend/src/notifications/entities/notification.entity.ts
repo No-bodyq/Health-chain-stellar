@@ -6,9 +6,9 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
+
 import { NotificationChannel } from '../enums/notification-channel.enum';
 import { NotificationStatus } from '../enums/notification-status.enum';
-
 
 @Entity('notifications')
 @Index(['notificationId', 'channel'], { unique: true })
@@ -16,7 +16,7 @@ export class NotificationEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
- @Column()
+  @Column()
   notificationId: string;
 
   @Column()

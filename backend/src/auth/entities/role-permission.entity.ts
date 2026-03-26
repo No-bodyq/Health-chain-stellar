@@ -5,7 +5,9 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+
 import { Permission } from '../enums/permission.enum';
+
 import { RoleEntity } from './role.entity';
 
 @Entity('role_permissions')

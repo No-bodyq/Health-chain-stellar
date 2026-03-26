@@ -4,18 +4,24 @@ import {
   Post,
   Body,
   Param,
+  Req,
   HttpCode,
   HttpStatus,
   ParseIntPipe,
 } from '@nestjs/common';
+
+import { Request } from 'express';
+
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { Permission } from '../auth/enums/permission.enum';
+
 import { BloodUnitsService } from './blood-units.service';
 import {
+  BulkRegisterBloodUnitsDto,
   RegisterBloodUnitDto,
   TransferCustodyDto,
   LogTemperatureDto,
 } from './dto/blood-units.dto';
-import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
-import { Permission } from '../auth/enums/permission.enum';
 
 @Controller('blood-units')
 export class BloodUnitsController {
@@ -24,8 +30,33 @@ export class BloodUnitsController {
   @RequirePermissions(Permission.REGISTER_BLOOD_UNIT)
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  async registerBloodUnit(@Body() dto: RegisterBloodUnitDto) {
-    return this.bloodUnitsService.registerBloodUnit(dto);
+  async registerBloodUnit(
+    @Body() dto: RegisterBloodUnitDto,
+    @Req()
+    request: Request & {
+      user?: {
+        id: string;
+        role: string;
+      };
+    },
+  ) {
+    return this.bloodUnitsService.registerBloodUnit(dto, request.user);
+  }
+
+  @RequirePermissions(Permission.REGISTER_BLOOD_UNIT)
+  @Post('register/bulk')
+  @HttpCode(HttpStatus.CREATED)
+  async registerBloodUnitsBulk(
+    @Body() dto: BulkRegisterBloodUnitsDto,
+    @Req()
+    request: Request & {
+      user?: {
+        id: string;
+        role: string;
+      };
+    },
+  ) {
+    return this.bloodUnitsService.registerBloodUnitsBulk(dto, request.user);
   }
 
   @RequirePermissions(Permission.TRANSFER_CUSTODY)

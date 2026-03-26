@@ -1,15 +1,17 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
+
 import { NotificationEntity } from '../entities/notification.entity';
-import { NotificationStatus } from '../enums/notification-status.enum';
 import { NotificationChannel } from '../enums/notification-channel.enum';
-import { SmsProvider } from '../providers/sms.provider';
-import { PushProvider } from '../providers/push.provider';
+import { NotificationStatus } from '../enums/notification-status.enum';
 import { EmailProvider } from '../providers/email.provider';
 import { InAppProvider } from '../providers/in-app.provider';
+import { PushProvider } from '../providers/push.provider';
+import { SmsProvider } from '../providers/sms.provider';
 
 export interface NotificationJobData {
   notificationId: string;
@@ -40,31 +42,30 @@ export class NotificationProcessor extends WorkerHost {
   async process(job: Job<NotificationJobData, any, string>): Promise<any> {
     const { notificationId, channel, recipientId, renderedBody } = job.data;
 
-     const idempotencyKey = `${notificationId}:${channel}`;
+    const idempotencyKey = `${notificationId}:${channel}`;
 
     this.logger.log(
       `Processing notification job ${job.id} for ${channel} -> ${recipientId}`,
     );
 
-     const notification = await this.notificationRepo.findOne({
-  where: {
-    notificationId,
-    channel,
-  },
-});
+    const notification = await this.notificationRepo.findOne({
+      where: {
+        notificationId,
+        channel,
+      },
+    });
 
-  if (!notification) {
-    this.logger.warn(`Notification ${notificationId} not found`);
-    return;
-  }
+    if (!notification) {
+      this.logger.warn(`Notification ${notificationId} not found`);
+      return;
+    }
 
-  
-  if (notification.status === NotificationStatus.SENT) {
-    this.logger.warn(
-      `Skipping duplicate send for ${idempotencyKey} (already SENT)`,
-    );
-    return { status: 'already_sent', notificationId };
-  }
+    if (notification.status === NotificationStatus.SENT) {
+      this.logger.warn(
+        `Skipping duplicate send for ${idempotencyKey} (already SENT)`,
+      );
+      return { status: 'already_sent', notificationId };
+    }
 
     try {
       switch (channel) {

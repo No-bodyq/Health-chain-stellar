@@ -5,20 +5,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { InjectRepository } from '@nestjs/typeorm';
 
-import { OrderStateMachine } from './state-machine/order-state-machine';
-import { OrderEventStoreService } from './services/order-event-store.service';
-import { OrdersGateway } from './gateways/orders.gateway';
-import { OrderEntity } from './entities/order.entity';
-import { OrderEventEntity } from './entities/order-event.entity';
-import { OrderStatus } from './enums/order-status.enum';
-import { OrderEventType } from './enums/order-event-type.enum';
-import { Order, BloodType } from './types/order.types';
-import { OrderQueryParamsDto } from './dto/order-query-params.dto';
-import { OrdersResponseDto } from './dto/orders-response.dto';
+import { Repository } from 'typeorm';
+
 import {
   OrderConfirmedEvent,
   OrderCancelledEvent,
@@ -31,6 +22,19 @@ import {
   OrderResolvedEvent,
 } from '../events';
 import { InventoryService } from '../inventory/inventory.service';
+
+import { OrderQueryParamsDto } from './dto/order-query-params.dto';
+import { OrdersResponseDto } from './dto/orders-response.dto';
+import { OrderEventEntity } from './entities/order-event.entity';
+import { OrderEntity } from './entities/order.entity';
+import { OrderEventType } from './enums/order-event-type.enum';
+import { OrderStatus } from './enums/order-status.enum';
+import { OrdersGateway } from './gateways/orders.gateway';
+import { OrderEventStoreService } from './services/order-event-store.service';
+import { OrderStateMachine } from './state-machine/order-state-machine';
+import { Order, BloodType } from './types/order.types';
+
+import type { OrderStatus as OrderStatusType } from './types/order.types';
 
 /** Maps each terminal OrderStatus to its corresponding event-store type. */
 const STATUS_TO_EVENT_TYPE: Record<OrderStatus, OrderEventType> = {
@@ -62,7 +66,7 @@ export class OrdersService {
   // ─── Queries ─────────────────────────────────────────────────────────────
 
   async findAll(status?: string, hospitalId?: string) {
-    const where: Partial<OrderEntity> = {};
+    const where: any = {};
     if (status) where.status = status as OrderStatus;
     if (hospitalId) where.hospitalId = hospitalId;
 
@@ -70,7 +74,9 @@ export class OrdersService {
     return { message: 'Orders retrieved successfully', data: orders };
   }
 
-  async findAllWithFilters(params: OrderQueryParamsDto): Promise<OrdersResponseDto> {
+  async findAllWithFilters(
+    params: OrderQueryParamsDto,
+  ): Promise<OrdersResponseDto> {
     const {
       hospitalId,
       startDate,
@@ -86,21 +92,21 @@ export class OrdersService {
 
     // Start with all orders for the hospital
     let filteredOrders = this.orders.filter(
-      (order) => order.hospital.id === hospitalId
+      (order) => order.hospital.id === hospitalId,
     );
 
     // Apply date range filter
     if (startDate) {
       const start = new Date(startDate);
       filteredOrders = filteredOrders.filter(
-        (order) => new Date(order.placedAt) >= start
+        (order) => new Date(order.placedAt) >= start,
       );
     }
 
     if (endDate) {
       const end = new Date(endDate);
       filteredOrders = filteredOrders.filter(
-        (order) => new Date(order.placedAt) <= end
+        (order) => new Date(order.placedAt) <= end,
       );
     }
 
@@ -108,15 +114,15 @@ export class OrdersService {
     if (bloodTypes) {
       const bloodTypeArray = bloodTypes.split(',') as BloodType[];
       filteredOrders = filteredOrders.filter((order) =>
-        bloodTypeArray.includes(order.bloodType)
+        bloodTypeArray.includes(order.bloodType),
       );
     }
 
     // Apply status filter
     if (statuses) {
-      const statusArray = statuses.split(',') as OrderStatus[];
+      const statusArray = statuses.split(',');
       filteredOrders = filteredOrders.filter((order) =>
-        statusArray.includes(order.status)
+        statusArray.includes(order.status as string),
       );
     }
 
@@ -124,16 +130,20 @@ export class OrdersService {
     if (bloodBank) {
       const searchTerm = bloodBank.toLowerCase();
       filteredOrders = filteredOrders.filter((order) =>
-        order.bloodBank.name.toLowerCase().includes(searchTerm)
+        order.bloodBank.name.toLowerCase().includes(searchTerm),
       );
     }
 
     // Sort orders with active orders prioritization
-    const activeStatuses = ['pending', 'confirmed', 'in_transit'];
+    const activeStatuses = [
+      OrderStatus.PENDING,
+      OrderStatus.CONFIRMED,
+      OrderStatus.IN_TRANSIT,
+    ];
     filteredOrders.sort((a, b) => {
       // First, prioritize active orders
-      const aIsActive = activeStatuses.includes(a.status);
-      const bIsActive = activeStatuses.includes(b.status);
+      const aIsActive = activeStatuses.includes(a.status as any);
+      const bIsActive = activeStatuses.includes(b.status as any);
 
       if (aIsActive && !bIsActive) return -1;
       if (!aIsActive && bIsActive) return 1;
@@ -218,7 +228,9 @@ export class OrdersService {
 
   async create(createOrderDto: any, actorId?: string) {
     if (!createOrderDto.bloodBankId) {
-      throw new BadRequestException('bloodBankId is required to place an order.');
+      throw new BadRequestException(
+        'bloodBankId is required to place an order.',
+      );
     }
 
     try {
@@ -304,10 +316,18 @@ export class OrdersService {
       new OrderRiderAssignedEvent(orderId, riderId),
     );
 
-    return { message: 'Rider assigned successfully', data: { orderId, riderId } };
+    return {
+      message: 'Rider assigned successfully',
+      data: { orderId, riderId },
+    };
   }
 
-  async raiseDispute(orderId: string, reason: string, disputeId: string, actorId?: string) {
+  async raiseDispute(
+    orderId: string,
+    reason: string,
+    disputeId: string,
+    actorId?: string,
+  ) {
     const order = await this.findOrderOrFail(orderId);
     order.disputeId = disputeId;
     order.disputeReason = reason;
@@ -320,7 +340,7 @@ export class OrdersService {
     // We can transition to RESOLVED first, or directly to terminal state if desired.
     // For now, let's transition to RESOLVED.
     await this.transitionStatus(orderId, OrderStatus.RESOLVED, actorId);
-    
+
     // Then handle final state based on resolution (simplified logic)
     if (resolution === 'REFUND') {
       return this.transitionStatus(orderId, OrderStatus.CANCELLED, actorId);
@@ -436,7 +456,11 @@ export class OrdersService {
       case OrderStatus.DISPUTED:
         this.eventEmitter.emit(
           'order.disputed',
-          new OrderDisputedEvent(order.id, order.disputeId ?? '', order.disputeReason ?? ''),
+          new OrderDisputedEvent(
+            order.id,
+            order.disputeId ?? '',
+            order.disputeReason ?? '',
+          ),
         );
         break;
 
@@ -450,7 +474,11 @@ export class OrdersService {
       case OrderStatus.CANCELLED:
         this.eventEmitter.emit(
           'order.cancelled',
-          new OrderCancelledEvent(order.id, order.hospitalId, 'Status transition'),
+          new OrderCancelledEvent(
+            order.id,
+            order.hospitalId,
+            'Status transition',
+          ),
         );
         break;
     }

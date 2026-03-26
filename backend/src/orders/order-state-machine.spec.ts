@@ -1,6 +1,9 @@
-import { OrderStateMachine, VALID_TRANSITIONS } from './state-machine/order-state-machine';
 import { OrderStatus } from './enums/order-status.enum';
 import { OrderTransitionException } from './exceptions/order-transition.exception';
+import {
+  OrderStateMachine,
+  VALID_TRANSITIONS,
+} from './state-machine/order-state-machine';
 
 describe('OrderStateMachine', () => {
   let sm: OrderStateMachine;
@@ -187,7 +190,9 @@ describe('OrderStateMachine', () => {
     });
 
     it('derives PENDING from a single-event log', () => {
-      expect(sm.replayFromEvents([OrderStatus.PENDING])).toBe(OrderStatus.PENDING);
+      expect(sm.replayFromEvents([OrderStatus.PENDING])).toBe(
+        OrderStatus.PENDING,
+      );
     });
 
     it('derives CONFIRMED after one transition', () => {

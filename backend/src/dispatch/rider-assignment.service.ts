@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+
 import { OrderConfirmedEvent, OrderRiderAssignedEvent } from '../events';
 import { MapsService } from '../maps/maps.service';
 import { RiderRecord, RidersService } from '../riders/riders.service';
@@ -29,18 +30,27 @@ export class RiderAssignmentService {
 
   @OnEvent('order.confirmed')
   async handleOrderConfirmed(event: OrderConfirmedEvent) {
-    const eventKey = this.getEventKey('order.confirmed', event.orderId, event.timestamp);
+    const eventKey = this.getEventKey(
+      'order.confirmed',
+      event.orderId,
+      event.timestamp,
+    );
 
     if (this.isEventProcessed(eventKey)) {
       this.logger.warn(`Duplicate event detected: ${eventKey}`);
       return;
     }
 
-    this.logger.log(`Handling order confirmed for rider assignment: ${event.orderId}`);
+    this.logger.log(
+      `Handling order confirmed for rider assignment: ${event.orderId}`,
+    );
     await this.startAutomatedAssignment(event);
     this.markEventProcessed(eventKey);
 
-    return { message: 'Rider assignment initiated', data: { orderId: event.orderId } };
+    return {
+      message: 'Rider assignment initiated',
+      data: { orderId: event.orderId },
+    };
   }
 
   async getAssignmentLogs(orderId?: string) {
@@ -54,7 +64,11 @@ export class RiderAssignmentService {
     };
   }
 
-  async respondToAssignment(orderId: string, riderId: string, accepted: boolean) {
+  async respondToAssignment(
+    orderId: string,
+    riderId: string,
+    accepted: boolean,
+  ) {
     const assignment = this.activeAssignments.get(orderId);
     if (!assignment) {
       return {
@@ -67,7 +81,11 @@ export class RiderAssignmentService {
     if (!currentCandidate || currentCandidate.rider.id !== riderId) {
       return {
         message: 'Response does not match current rider candidate',
-        data: { orderId, riderId, expectedRiderId: currentCandidate?.rider.id ?? null },
+        data: {
+          orderId,
+          riderId,
+          expectedRiderId: currentCandidate?.rider.id ?? null,
+        },
       };
     }
 
@@ -112,11 +130,21 @@ export class RiderAssignmentService {
   }
 
   getDispatchStats() {
-    const pending = this.assignmentLogs.filter((log) => log.status === 'pending').length;
-    const accepted = this.assignmentLogs.filter((log) => log.status === 'accepted').length;
-    const escalated = this.assignmentLogs.filter((log) => log.status === 'escalated').length;
-    const timeout = this.assignmentLogs.filter((log) => log.status === 'timeout').length;
-    const rejected = this.assignmentLogs.filter((log) => log.status === 'rejected').length;
+    const pending = this.assignmentLogs.filter(
+      (log) => log.status === 'pending',
+    ).length;
+    const accepted = this.assignmentLogs.filter(
+      (log) => log.status === 'accepted',
+    ).length;
+    const escalated = this.assignmentLogs.filter(
+      (log) => log.status === 'escalated',
+    ).length;
+    const timeout = this.assignmentLogs.filter(
+      (log) => log.status === 'timeout',
+    ).length;
+    const rejected = this.assignmentLogs.filter(
+      (log) => log.status === 'rejected',
+    ).length;
 
     return {
       message: 'Dispatch statistics retrieved successfully',
@@ -132,9 +160,18 @@ export class RiderAssignmentService {
   }
 
   private resolveWeights(): AssignmentWeights {
-    const distance = this.configService.get<number>('ASSIGNMENT_DISTANCE_WEIGHT', 0.5);
-    const workload = this.configService.get<number>('ASSIGNMENT_WORKLOAD_WEIGHT', 0.3);
-    const rating = this.configService.get<number>('ASSIGNMENT_RATING_WEIGHT', 0.2);
+    const distance = this.configService.get<number>(
+      'ASSIGNMENT_DISTANCE_WEIGHT',
+      0.5,
+    );
+    const workload = this.configService.get<number>(
+      'ASSIGNMENT_WORKLOAD_WEIGHT',
+      0.3,
+    );
+    const rating = this.configService.get<number>(
+      'ASSIGNMENT_RATING_WEIGHT',
+      0.2,
+    );
     const total = distance + workload + rating;
     if (total <= 0) {
       return { distance: 0.5, workload: 0.3, rating: 0.2 };
@@ -146,7 +183,11 @@ export class RiderAssignmentService {
     };
   }
 
-  private getEventKey(eventName: string, orderId: string, timestamp: Date): string {
+  private getEventKey(
+    eventName: string,
+    orderId: string,
+    timestamp: Date,
+  ): string {
     return `${eventName}:${orderId}:${timestamp.getTime()}`;
   }
 
@@ -163,9 +204,11 @@ export class RiderAssignmentService {
     cleanupTimer.unref?.();
   }
 
-  private async startAutomatedAssignment(event: OrderConfirmedEvent): Promise<void> {
+  private async startAutomatedAssignment(
+    event: OrderConfirmedEvent,
+  ): Promise<void> {
     const availableResponse = await this.ridersService.getAvailableRiders();
-    const riders = (availableResponse.data ?? []) as RiderRecord[];
+    const riders = availableResponse.data ?? [];
 
     if (riders.length === 0) {
       this.appendAssignmentLog({
@@ -181,7 +224,9 @@ export class RiderAssignmentService {
 
     const pickupPoint = event.deliveryAddress;
     const scored = await this.scoreRiders(riders, pickupPoint);
-    const ranked = scored.sort((a, b) => b.score.totalScore - a.score.totalScore);
+    const ranked = scored.sort(
+      (a, b) => b.score.totalScore - a.score.totalScore,
+    );
 
     const state: ActiveAssignmentState = {
       orderId: event.orderId,
@@ -267,14 +312,22 @@ export class RiderAssignmentService {
     });
   }
 
-  private normalizeLowerIsBetter(value: number, min: number, max: number): number {
+  private normalizeLowerIsBetter(
+    value: number,
+    min: number,
+    max: number,
+  ): number {
     if (max === min) {
       return 1;
     }
     return 1 - (value - min) / (max - min);
   }
 
-  private normalizeHigherIsBetter(value: number, min: number, max: number): number {
+  private normalizeHigherIsBetter(
+    value: number,
+    min: number,
+    max: number,
+  ): number {
     if (max === min) {
       return 1;
     }

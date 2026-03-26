@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
+
 import {
   OrderCancelledEvent,
   OrderStatusUpdatedEvent,
   OrderRiderAssignedEvent,
 } from '../events';
+
 import { RiderAssignmentService } from './rider-assignment.service';
 
 @Injectable()
@@ -21,7 +22,11 @@ export class DispatchService {
   /**
    * Generate a unique key for event idempotency
    */
-  private getEventKey(eventName: string, orderId: string, timestamp: Date): string {
+  private getEventKey(
+    eventName: string,
+    orderId: string,
+    timestamp: Date,
+  ): string {
     return `${eventName}:${orderId}:${timestamp.getTime()}`;
   }
 
@@ -47,7 +52,11 @@ export class DispatchService {
 
   @OnEvent('order.cancelled')
   async handleOrderCancelled(event: OrderCancelledEvent) {
-    const eventKey = this.getEventKey('order.cancelled', event.orderId, event.timestamp);
+    const eventKey = this.getEventKey(
+      'order.cancelled',
+      event.orderId,
+      event.timestamp,
+    );
 
     if (this.isEventProcessed(eventKey)) {
       this.logger.warn(`Duplicate event detected: ${eventKey}`);
@@ -72,7 +81,11 @@ export class DispatchService {
 
   @OnEvent('order.status.updated')
   async handleOrderStatusUpdated(event: OrderStatusUpdatedEvent) {
-    const eventKey = this.getEventKey('order.status.updated', event.orderId, event.timestamp);
+    const eventKey = this.getEventKey(
+      'order.status.updated',
+      event.orderId,
+      event.timestamp,
+    );
 
     if (this.isEventProcessed(eventKey)) {
       this.logger.warn(`Duplicate event detected: ${eventKey}`);
@@ -99,14 +112,20 @@ export class DispatchService {
 
   @OnEvent('order.rider.assigned')
   async handleOrderRiderAssigned(event: OrderRiderAssignedEvent) {
-    const eventKey = this.getEventKey('order.rider.assigned', event.orderId, event.timestamp);
+    const eventKey = this.getEventKey(
+      'order.rider.assigned',
+      event.orderId,
+      event.timestamp,
+    );
 
     if (this.isEventProcessed(eventKey)) {
       this.logger.warn(`Duplicate event detected: ${eventKey}`);
       return;
     }
 
-    this.logger.log(`Handling rider assignment: ${event.riderId} to order ${event.orderId}`);
+    this.logger.log(
+      `Handling rider assignment: ${event.riderId} to order ${event.orderId}`,
+    );
 
     // TODO: Implement dispatch rider assignment logic
     const result = {
@@ -118,7 +137,9 @@ export class DispatchService {
 
     this.markEventProcessed(eventKey);
 
-    this.logger.log(`Rider ${event.riderId} assigned to dispatch for order ${event.orderId}`);
+    this.logger.log(
+      `Rider ${event.riderId} assigned to dispatch for order ${event.orderId}`,
+    );
     return result;
   }
 
@@ -202,11 +223,21 @@ export class DispatchService {
     return this.riderAssignmentService.getDispatchStats();
   }
 
-  async getAssignmentLogs(orderId?: string): Promise<{ message: string; data: unknown[] }> {
+  async getAssignmentLogs(
+    orderId?: string,
+  ): Promise<{ message: string; data: unknown[] }> {
     return this.riderAssignmentService.getAssignmentLogs(orderId);
   }
 
-  async respondToAssignment(orderId: string, riderId: string, accepted: boolean) {
-    return this.riderAssignmentService.respondToAssignment(orderId, riderId, accepted);
+  async respondToAssignment(
+    orderId: string,
+    riderId: string,
+    accepted: boolean,
+  ) {
+    return this.riderAssignmentService.respondToAssignment(
+      orderId,
+      riderId,
+      accepted,
+    );
   }
 }

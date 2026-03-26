@@ -1,5 +1,6 @@
 // @ts-check
 import eslint from '@eslint/js';
+import eslintPluginImport from 'eslint-plugin-import';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -10,6 +11,7 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
+  eslintPluginImport.flatConfigs.recommended,
   eslintPluginPrettierRecommended,
   {
     languageOptions: {
@@ -30,6 +32,38 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
       "prettier/prettier": ["error", { endOfLine: "auto" }],
+      // Import ordering rules
+      'import/order': [
+        'error',
+        {
+          groups: [
+            'builtin',
+            'external',
+            'internal',
+            'parent',
+            'sibling',
+            'index',
+            'type',
+          ],
+          pathGroups: [
+            {
+              pattern: '@nestjs/**',
+              group: 'external',
+              position: 'before',
+            },
+          ],
+          pathGroupsExcludedImportTypes: ['type'],
+          'newlines-between': 'always',
+          alphabetize: {
+            order: 'asc',
+            caseInsensitive: true,
+          },
+        },
+      ],
+      // Duplicate imports detection
+      'import/no-duplicates': 'error',
+      // Disable unresolved import warnings - TypeScript compiler will catch these
+      'import/no-unresolved': 'off',
     },
   },
 );

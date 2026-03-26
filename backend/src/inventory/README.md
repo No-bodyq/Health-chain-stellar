@@ -1,57 +1,212 @@
-# Inventory Forecasting System
+# Inventory Module
 
-## Overview
-
-The Inventory Forecasting System monitors blood inventory levels, forecasts demand based on historical order data, and triggers automated alerts when stock is projected to fall below safe thresholds.
-
-## Features
-
-- **Automated Forecasting**: Runs on a configurable cron schedule (default: every 6 hours)
-- **Demand Calculation**: Uses rolling 30-day order history to calculate average daily demand per blood type per region
-- **Projected Supply**: Computes days-of-supply based on current stock and forecasted demand
-- **Smart Alerts**: Emits `InventoryLowEvent` when projected supply falls below threshold
-- **Multi-Channel Notifications**: Triggers in-app notifications and SMS alerts via Africa's Talking
-- **Donor Outreach**: Automatically queues BullMQ jobs to recommend targeted donor outreach
-- **Configurable Thresholds**: Supports per-blood-type and per-region threshold configuration
+Blood bank inventory management with stock tracking, forecasting, and automated low-stock alerts.
 
 ## Architecture
 
-### Components
+### Core Components
 
-1. **InventoryForecastingService** - Core forecasting logic with cron scheduling
-2. **InventoryEventListener** - Handles `inventory.low` events and triggers notifications
-3. **DonorOutreachProcessor** - BullMQ worker for processing donor outreach campaigns
-4. **InventoryEntity** - Database entity for tracking blood inventory by type and region
-5. **InventoryLowEvent** - Event payload containing alert details
+- **InventoryService**: CRUD operations, stock management, and aggregations
+- **InventoryForecastingService**: Demand forecasting and predictive alerts
+- **InventoryEventListener**: Handles low inventory events and notifications
+- **InventoryController**: REST API for inventory operations
 
-### Data Flow
+### Features
 
+- Real-time stock tracking (available, reserved, total)
+- Low stock and critical stock monitoring
+- Demand forecasting based on historical orders
+- Automated alerts via events and notifications
+- Stock reservation system for pending orders
+- Multi-region and multi-blood-type support
+- Configurable thresholds per blood type/region
+
+## Public API
+
+### Endpoints
+
+#### GET /inventory
+List all inventory items, optionally filtered by hospital.
+
+**Query Params:**
+- `hospitalId` (optional): Filter by hospital
+
+**Response:** `200 OK`
+```json
+[
+  {
+    "id": "uuid",
+    "bloodType": "A+",
+    "quantity": 50,
+    "reserved": 10,
+    "available": 40,
+    "region": "Nairobi",
+    "hospitalId": "uuid",
+    "reorderLevel": 20,
+    "reorderQuantity": 30
+  }
+]
 ```
-Cron Trigger (every 6h)
-  ↓
-InventoryForecastingService.runForecast()
-  ↓
-Calculate demand from 30-day order history
-  ↓
-Query current inventory levels
-  ↓
-Compute projected days-of-supply
-  ↓
-If below threshold → Emit InventoryLowEvent
-  ↓
-InventoryEventListener handles event
-  ↓
-├─→ Send in-app notification
-├─→ Send SMS alert
-└─→ Queue donor outreach job
+
+#### GET /inventory/low-stock
+Get items below threshold.
+
+**Query Params:**
+- `threshold` (optional, default: 10): Quantity threshold
+
+**Response:** `200 OK`
+
+#### GET /inventory/critical-stock
+Get items at or below reorder level.
+
+**Response:** `200 OK`
+
+#### GET /inventory/aggregation
+Get stock aggregated by blood type across all regions.
+
+**Response:** `200 OK`
+```json
+{
+  "A+": { "total": 150, "available": 120, "reserved": 30 },
+  "O-": { "total": 80, "available": 60, "reserved": 20 }
+}
 ```
 
-## Configuration
+#### GET /inventory/stats
+Get inventory statistics.
 
-### Environment Variables
+**Query Params:**
+- `hospitalId` (optional): Filter by hospital
 
-```bash
-# Cron schedule (default: every 6 hours)
+**Response:** `200 OK`
+```json
+{
+  "totalUnits": 500,
+  "availableUnits": 400,
+  "reservedUnits": 100,
+  "lowStockItems": 5,
+  "criticalStockItems": 2
+}
+```
+
+#### GET /inventory/reorder-summary
+Get items that need reordering.
+
+**Response:** `200 OK`
+```json
+[
+  {
+    "id": "uuid",
+    "bloodType": "O-",
+    "currentQuantity": 15,
+    "reorderLevel": 20,
+    "reorderQuantity": 30,
+    "region": "Mombasa"
+  }
+]
+```
+
+#### GET /inventory/:id
+Get single inventory item.
+
+**Response:** `200 OK`
+
+#### POST /inventory
+Create new inventory item.
+
+**Permissions:** `CREATE_INVENTORY`
+
+**Request:**
+```json
+{
+  "bloodType": "A+",
+  "quantity": 50,
+  "region": "Nairobi",
+  "hospitalId": "uuid",
+  "reorderLevel": 20,
+  "reorderQuantity": 30
+}
+```
+
+**Response:** `201 Created`
+
+#### PATCH /inventory/:id
+Update inventory item.
+
+**Permissions:** `UPDATE_INVENTORY`
+
+**Request:**
+```json
+{
+  "reorderLevel": 25,
+  "reorderQuantity": 40
+}
+```
+
+**Response:** `200 OK`
+
+#### PATCH /inventory/:id/stock
+Update stock quantity (add or remove units).
+
+**Permissions:** `UPDATE_INVENTORY`
+
+**Request:**
+```json
+{
+  "quantity": 10  // Positive to add, negative to remove
+}
+```
+
+**Response:** `200 OK`
+
+#### PATCH /inventory/:id/reserve
+Reserve stock for an order.
+
+**Permissions:** `UPDATE_INVENTORY`
+
+**Request:**
+```json
+{
+  "quantity": 5
+}
+```
+
+**Response:** `200 OK`
+
+#### PATCH /inventory/:id/release
+Release reserved stock (order cancelled/completed).
+
+**Permissions:** `UPDATE_INVENTORY`
+
+**Request:**
+```json
+{
+  "quantity": 5
+}
+```
+
+**Response:** `200 OK`
+
+#### DELETE /inventory/:id
+Delete inventory item.
+
+**Permissions:** `DELETE_INVENTORY`
+
+**Response:** `204 No Content`
+
+## Demand Forecasting
+
+### How It Works
+
+1. **Historical Analysis**: Analyzes orders from last 30 days (configurable)
+2. **Daily Demand Calculation**: `totalQuantity / historyDays`
+3. **Supply Projection**: `currentStock / averageDailyDemand`
+4. **Alert Trigger**: If projected days < threshold, emit event
+
+### Configuration
+
+```env
+# Cron schedule for forecasting (default: every 6 hours)
 INVENTORY_FORECAST_CRON=0 */6 * * *
 
 # Default threshold in days (default: 3)
@@ -60,91 +215,37 @@ INVENTORY_FORECAST_THRESHOLD_DAYS=3
 # Historical data window in days (default: 30)
 INVENTORY_FORECAST_HISTORY_DAYS=30
 
-# Per-blood-type/region thresholds (optional)
-INVENTORY_FORECAST_THRESHOLDS=[{"bloodType":"A+","region":"Nairobi","daysThreshold":5},{"bloodType":"O-","region":"Mombasa","daysThreshold":7}]
-```
-
-### Custom Thresholds
-
-You can configure different thresholds for specific blood types and regions:
-
-```json
-[
-  {
-    "bloodType": "A+",
-    "region": "Nairobi",
-    "daysThreshold": 5
-  },
-  {
-    "bloodType": "O-",
-    "region": "Mombasa",
-    "daysThreshold": 7
-  }
+# Custom thresholds per blood type/region (JSON array)
+INVENTORY_FORECAST_THRESHOLDS=[
+  {"bloodType":"A+","region":"Nairobi","daysThreshold":5},
+  {"bloodType":"O-","region":"Mombasa","daysThreshold":7}
 ]
 ```
 
-If no custom threshold is defined, the system uses `INVENTORY_FORECAST_THRESHOLD_DAYS`.
-
-## Database Schema
-
-### Inventory Table
-
-```sql
-CREATE TABLE inventory (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  blood_type VARCHAR NOT NULL,
-  region VARCHAR NOT NULL,
-  quantity INT DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(blood_type, region)
-);
-```
-
-### Notification Templates
-
-Two templates are automatically seeded:
-
-1. **in-app**: Detailed alert with all metrics
-2. **sms**: Concise urgent alert for mobile delivery
-
-## Usage
-
-### Running Forecasts
-
-The service runs automatically on the configured cron schedule. To trigger manually:
+### Forecast Output
 
 ```typescript
-await inventoryForecastingService.runForecast();
-```
-
-### Calculating Forecasts
-
-To get forecast data without triggering alerts:
-
-```typescript
-const forecasts = await inventoryForecastingService.calculateDemandForecasts();
-// Returns: DemandForecast[]
-```
-
-### Forecast Data Structure
-
-```typescript
-interface DemandForecast {
-  bloodType: string;
-  region: string;
-  currentStock: number;
-  averageDailyDemand: number;
-  projectedDaysOfSupply: number;
+{
+  bloodType: "O-",
+  region: "Mombasa",
+  currentStock: 15,
+  averageDailyDemand: 5.2,
+  projectedDaysOfSupply: 2.88  // 15 / 5.2
 }
 ```
 
-## Event Handling
+If `projectedDaysOfSupply < threshold`:
+- Emits `inventory.low` event
+- Queues donor outreach job
+- Logs warning
 
-### InventoryLowEvent
+## Events
 
-Emitted when inventory falls below threshold:
+### inventory.low
 
+Emitted when forecasted supply falls below threshold.
+
+**Payload:**
 ```typescript
 {
   bloodType: string;
@@ -156,87 +257,135 @@ Emitted when inventory falls below threshold:
 }
 ```
 
-### Listening to Events
+**Listeners:**
+- `InventoryEventListener`: Sends notifications to admins
+- `DonorOutreachService`: Triggers donor campaigns
+
+## Usage
+
+### Reserving Stock for Orders
 
 ```typescript
-@OnEvent('inventory.low')
-async handleInventoryLow(event: InventoryLowEvent) {
-  // Custom handling logic
+import { InventoryService } from './inventory/inventory.service';
+
+@Injectable()
+export class OrderService {
+  constructor(private inventoryService: InventoryService) {}
+
+  async createOrder(orderDto: CreateOrderDto) {
+    // Find inventory for blood type and region
+    const inventory = await this.inventoryService.findByBloodTypeAndRegion(
+      orderDto.bloodType,
+      orderDto.region,
+    );
+
+    // Reserve stock
+    await this.inventoryService.reserveStock(
+      inventory.id,
+      orderDto.quantity,
+    );
+
+    // Create order
+    const order = await this.orderRepository.save(orderDto);
+
+    return order;
+  }
+
+  async cancelOrder(orderId: string) {
+    const order = await this.orderRepository.findOne(orderId);
+
+    // Release reserved stock
+    await this.inventoryService.releaseStock(
+      order.inventoryId,
+      order.quantity,
+    );
+
+    // Cancel order
+    order.status = 'cancelled';
+    await this.orderRepository.save(order);
+  }
 }
 ```
 
-## Donor Outreach Queue
-
-When inventory is low, a job is automatically queued:
+### Manual Forecast Trigger
 
 ```typescript
+import { InventoryForecastingService } from './inventory/inventory-forecasting.service';
+
+@Injectable()
+export class AdminService {
+  constructor(
+    private forecastingService: InventoryForecastingService,
+  ) {}
+
+  async triggerForecast() {
+    await this.forecastingService.runForecast();
+    return { message: 'Forecast triggered' };
+  }
+}
+```
+
+## Data Models
+
+### InventoryEntity
+- `id`: UUID
+- `bloodType`: Blood type (A+, A-, B+, B-, AB+, AB-, O+, O-)
+- `quantity`: Total units in stock
+- `reserved`: Units reserved for pending orders
+- `available`: Computed (quantity - reserved)
+- `region`: Geographic region
+- `hospitalId`: Associated hospital
+- `reorderLevel`: Threshold for reorder alerts
+- `reorderQuantity`: Suggested reorder amount
+
+### InventoryStockEntity
+- Historical stock level snapshots
+- Used for trend analysis
+
+## Queue Jobs
+
+### donor-outreach
+
+Queued when low inventory detected.
+
+**Job Data:**
+```json
 {
-  bloodType: string;
-  region: string;
-  urgency: 'critical' | 'high' | 'medium';
-  projectedDaysOfSupply: number;
-  requiredUnits: number;
+  "bloodType": "O-",
+  "region": "Mombasa",
+  "urgency": "critical",
+  "projectedDaysOfSupply": 0.8,
+  "requiredUnits": 25
 }
 ```
-
-Urgency levels:
-- **critical**: < 1 day of supply
-- **high**: 1-3 days of supply
-- **medium**: > 3 days but below threshold
 
 ## Testing
 
-Run unit tests:
-
 ```bash
-npm test inventory-forecasting.service.spec.ts
+# Unit tests
+npm test -- inventory
+
+# Integration tests (forecasting)
+npm test -- inventory-forecasting.integration
+
+# Contract tests
+npm run test:contracts -- blood-requests-inventory
 ```
 
-### Test Coverage
+## Best Practices
 
-- ✅ Average daily demand calculation from order history
-- ✅ No order history edge case
-- ✅ Single data point handling
-- ✅ Zero demand scenario (returns Infinity)
-- ✅ Zero stock handling
-- ✅ Event emission when below threshold
-- ✅ No event when above threshold
-- ✅ Donor outreach job queuing
-- ✅ Custom per-region/blood-type thresholds
+- Always reserve stock before creating orders
+- Release stock when orders are cancelled or completed
+- Monitor forecast logs for accuracy
+- Adjust thresholds based on regional demand patterns
+- Set reorder levels to 2-3x average daily demand
+- Review DLQ for failed outreach jobs
+- Use aggregation endpoints for dashboards
 
-## Migration
+## Performance Considerations
 
-Run the migration to set up tables and seed templates:
-
-```bash
-npm run migration:run
-```
-
-This creates:
-- `inventory` table with unique constraint on (blood_type, region)
-- Notification templates for in-app and SMS alerts
-
-## Monitoring
-
-The service logs:
-- Forecast execution start/completion
-- Low inventory warnings with details
-- Forecast failures with error details
-- Number of blood type/region combinations processed
-
-Example log output:
-
-```
-[InventoryForecastingService] Running inventory forecast
-[InventoryForecastingService] Low inventory alert: A+ in Nairobi - 2.3 days remaining (threshold: 3)
-[InventoryForecastingService] Forecast complete. Processed 12 blood type/region combinations
-```
-
-## Future Enhancements
-
-- Machine learning-based demand prediction
-- Seasonal trend analysis
-- Holiday/event-based demand spikes
-- Integration with external weather/event APIs
-- Automated donor scheduling recommendations
-- Real-time inventory updates via webhooks
+- Forecasting runs every 6 hours by default
+- Historical query limited to 30 days
+- Index on `bloodType` and `region` for fast lookups
+- Cache aggregation results for dashboards
+- Use pagination for large inventory lists

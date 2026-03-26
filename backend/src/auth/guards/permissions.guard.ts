@@ -5,9 +5,10 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Permission } from '../enums/permission.enum';
-import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import { Permission } from '../enums/permission.enum';
 import { PermissionsService } from '../permissions.service';
 
 /**

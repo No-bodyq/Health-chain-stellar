@@ -6,7 +6,9 @@ import {
   UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
+
 import { UserRole } from '../enums/user-role.enum';
+
 import { RolePermissionEntity } from './role-permission.entity';
 
 @Entity('roles')

@@ -1,6 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
 import { Repository } from 'typeorm';
+
+import {
+  ReservedUnitInvariantService,
+  UnitReservationCheck,
+} from '../common/invariants/reserved-unit.invariant';
 import { InventoryStockEntity } from './entities/inventory-stock.entity';
 
 @Injectable()
@@ -8,6 +18,7 @@ export class InventoryService {
   constructor(
     @InjectRepository(InventoryStockEntity)
     private readonly inventoryRepo: Repository<InventoryStockEntity>,
+    private readonly unitInvariant: ReservedUnitInvariantService,
   ) {}
 
   async findAll(hospitalId?: string) {
@@ -40,12 +51,20 @@ export class InventoryService {
 
     const entity = existing
       ? this.inventoryRepo.merge(existing, {
-          availableUnits: Number(createInventoryDto.availableUnits ?? createInventoryDto.quantity ?? 0),
+          availableUnits: Number(
+            createInventoryDto.availableUnits ??
+              createInventoryDto.quantity ??
+              0,
+          ),
         })
       : this.inventoryRepo.create({
           bloodBankId: createInventoryDto.bloodBankId,
           bloodType: createInventoryDto.bloodType,
-          availableUnits: Number(createInventoryDto.availableUnits ?? createInventoryDto.quantity ?? 0),
+          availableUnits: Number(
+            createInventoryDto.availableUnits ??
+              createInventoryDto.quantity ??
+              0,
+          ),
         });
 
     const data = await this.inventoryRepo.save(entity);
@@ -125,7 +144,9 @@ export class InventoryService {
     quantity: number,
   ): Promise<void> {
     if (quantity <= 0) {
-      throw new ConflictException('Requested quantity must be greater than zero.');
+      throw new ConflictException(
+        'Requested quantity must be greater than zero.',
+      );
     }
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -167,5 +188,105 @@ export class InventoryService {
         'Inventory was updated by another order request. Please retry.',
       );
     }
+  }
+
+  /**
+   * Returns reserved units to stock (e.g. when a downstream step fails after reserve).
+   */
+  async releaseStockByBankAndType(
+    bloodBankId: string,
+    bloodType: string,
+    quantity: number,
+  ): Promise<void> {
+    if (quantity <= 0) {
+      return;
+    }
+    await this.inventoryRepo
+      .createQueryBuilder()
+      .update(InventoryStockEntity)
+      .set({
+        availableUnits: () => `"available_units" + ${quantity}`,
+        version: () => '"version" + 1',
+      })
+      .where('"blood_bank_id" = :bloodBankId', { bloodBankId })
+      .andWhere('"blood_type" = :bloodType', { bloodType })
+      .execute();
+  }
+
+  async getCriticalStockItems() {
+    return this.getLowStockItems(5);
+  }
+
+  async getStockAggregation() {
+    const data = await this.inventoryRepo
+      .createQueryBuilder('inventory')
+      .select('inventory.bloodType', 'bloodType')
+      .addSelect('SUM(inventory.availableUnits)', 'totalUnits')
+      .groupBy('inventory.bloodType')
+      .getRawMany();
+
+    return {
+      message: 'Stock aggregation retrieved successfully',
+      data,
+    };
+  }
+
+  async getInventoryStats(hospitalId?: string) {
+    const where = hospitalId ? { bloodBankId: hospitalId } : {};
+    const items = await this.inventoryRepo.find({ where });
+
+    const totalUnits = items.reduce(
+      (sum, item) => sum + item.availableUnits,
+      0,
+    );
+    const lowStockCount = items.filter(
+      (item) => item.availableUnits <= 10,
+    ).length;
+
+    return {
+      message: 'Inventory stats retrieved successfully',
+      data: {
+        totalItems: items.length,
+        totalUnits,
+        lowStockCount,
+      },
+    };
+  }
+
+  async getReorderSummary() {
+    const lowStock = await this.getLowStockItems(10);
+    return {
+      message: 'Reorder summary retrieved successfully',
+      data: lowStock.data,
+    };
+  }
+
+  async reserveStock(id: string, quantity: number) {
+    const item = await this.inventoryRepo.findOne({ where: { id } });
+    if (!item) {
+      throw new NotFoundException(`Inventory item '${id}' not found`);
+    }
+    if (item.availableUnits < quantity) {
+      throw new ConflictException('Insufficient stock');
+    }
+    item.availableUnits -= quantity;
+    const data = await this.inventoryRepo.save(item);
+    return {
+      message: 'Stock reserved successfully',
+      data,
+    };
+  }
+
+  async releaseStock(id: string, quantity: number) {
+    const item = await this.inventoryRepo.findOne({ where: { id } });
+    if (!item) {
+      throw new NotFoundException(`Inventory item '${id}' not found`);
+    }
+    item.availableUnits += quantity;
+    const data = await this.inventoryRepo.save(item);
+    return {
+      message: 'Stock released successfully',
+      data,
+    };
   }
 }

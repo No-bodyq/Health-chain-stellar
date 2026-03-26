@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Body, Query } from '@nestjs/common';
-import { MapsService } from './maps.service';
+
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
+
+import { MapsService } from './maps.service';
 
 @Controller('maps')
 export class MapsController {

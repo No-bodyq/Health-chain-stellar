@@ -46,6 +46,9 @@ lerna-debug.log*
 .temp
 .tmp
 
+# Organization registration uploads (local disk)
+uploads/
+
 # Runtime data
 pids
 *.pid

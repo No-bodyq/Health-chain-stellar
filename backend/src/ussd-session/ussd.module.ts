@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
+
+import { UssdSessionStore, REDIS_CLIENT } from './ussd-session.store';
+import { UssdStateMachine } from './ussd-state-machine.service';
 import { UssdController } from './ussd.controller';
 import { UssdService } from './ussd.service';
-import { UssdStateMachine } from './ussd-state-machine.service';
-import { UssdSessionStore, REDIS_CLIENT } from './ussd-session.store';
 
 /**
  * UssdModule wires together the USSD flow.

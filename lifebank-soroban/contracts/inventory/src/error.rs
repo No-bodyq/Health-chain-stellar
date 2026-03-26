@@ -4,34 +4,34 @@ use soroban_sdk::contracterror;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum ContractError {
-    // General errors (0-9)
-    AlreadyInitialized = 0,
-    NotInitialized = 1,
-    Unauthorized = 2,
+    // General errors (100-109)
+    AlreadyInitialized = 100,
+    NotInitialized = 101,
+    Unauthorized = 102,
 
-    // Validation errors (10-19)
-    InvalidAmount = 10,
-    InvalidAddress = 11,
-    InvalidInput = 12,
-    InvalidBloodType = 13,
-    InvalidStatus = 14,
-    InvalidTimestamp = 15,
-    InvalidQuantity = 16,
-    InvalidExpiration = 17,
+    // Validation errors (110-119)
+    InvalidAmount = 110,
+    InvalidAddress = 111,
+    InvalidInput = 112,
+    InvalidBloodType = 113,
+    InvalidStatus = 114,
+    InvalidTimestamp = 115,
+    InvalidQuantity = 116,
+    InvalidExpiration = 117,
 
-    // State errors (20-29)
-    AlreadyExists = 20,
-    NotFound = 21,
-    Expired = 22,
-    BloodUnitExpired = 23,
-    DuplicateBloodUnit = 24,
+    // State errors (120-129)
+    AlreadyExists = 120,
+    NotFound = 121,
+    Expired = 122,
+    BloodUnitExpired = 123,
+    DuplicateBloodUnit = 124,
 
-    // Permission errors (30-39)
-    InsufficientBalance = 30,
-    InsufficientPermissions = 31,
-    NotAuthorizedBloodBank = 32,
+    // Permission errors (130-139)
+    InsufficientBalance = 130,
+    InsufficientPermissions = 131,
+    NotAuthorizedBloodBank = 132,
 
-    // Blood-specific errors (40-49)
-    BloodUnitNotAvailable = 40,
-    InvalidStatusTransition = 41,
+    // Blood-specific errors (140-149)
+    BloodUnitNotAvailable = 140,
+    InvalidStatusTransition = 141,
 }

@@ -1,6 +1,11 @@
 export type BloodType = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
 
-export type OrderStatus = 'pending' | 'confirmed' | 'in_transit' | 'delivered' | 'cancelled';
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'in_transit'
+  | 'delivered'
+  | 'cancelled';
 
 export interface BloodBankInfo {
   id: string;

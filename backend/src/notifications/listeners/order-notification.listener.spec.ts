@@ -1,7 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { OrderNotificationListener } from './order-notification.listener';
-import { NotificationsService } from '../notifications.service';
-import { NotificationChannel } from '../enums/notification-channel.enum';
+
 import {
   OrderConfirmedEvent,
   OrderCancelledEvent,
@@ -9,6 +7,10 @@ import {
   OrderDispatchedEvent,
   OrderDeliveredEvent,
 } from '../../events';
+import { NotificationChannel } from '../enums/notification-channel.enum';
+import { NotificationsService } from '../notifications.service';
+
+import { OrderNotificationListener } from './order-notification.listener';
 
 describe('OrderNotificationListener', () => {
   let listener: OrderNotificationListener;

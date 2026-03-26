@@ -10,9 +10,11 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { HospitalsService } from './hospitals.service';
+
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
+
+import { HospitalsService } from './hospitals.service';
 
 @Controller('hospitals')
 export class HospitalsController {

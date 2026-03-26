@@ -5,13 +5,14 @@ import {
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
+
 import { Request } from 'express';
 
 /**
  * Admin Guard
- * 
+ *
  * Protects admin endpoints by verifying admin permissions.
- * 
+ *
  * Current implementation: Basic header-based authentication
  * Production implementation should use:
  * - JWT token verification
@@ -30,10 +31,10 @@ export class AdminGuard implements CanActivate {
     const isAdmin = this.checkAdminPermission(request);
 
     if (!isAdmin) {
-      this.logger.warn(
-        `Unauthorized admin access attempt from ${request.ip}`,
-        { path: request.path, method: request.method },
-      );
+      this.logger.warn(`Unauthorized admin access attempt from ${request.ip}`, {
+        path: request.path,
+        method: request.method,
+      });
       throw new ForbiddenException('Admin permission required');
     }
 
@@ -45,26 +46,26 @@ export class AdminGuard implements CanActivate {
 
   /**
    * Check if request has admin permission.
-   * 
+   *
    * Current implementation: Header-based authentication
-   * 
+   *
    * TODO: Implement production authentication:
    * 1. JWT token verification
    *    - Extract token from Authorization header
    *    - Verify signature with public key
    *    - Check token expiration
    *    - Verify admin role in claims
-   * 
+   *
    * 2. Role-based access control
    *    - Query database for user roles
    *    - Check if user has 'admin' role
    *    - Cache role checks with TTL
-   * 
+   *
    * 3. Audit logging
    *    - Log all admin access attempts
    *    - Track who accessed what and when
    *    - Alert on suspicious patterns
-   * 
+   *
    * @param request - Express request object
    * @returns true if admin, false otherwise
    */

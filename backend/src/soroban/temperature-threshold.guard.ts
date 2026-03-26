@@ -24,7 +24,9 @@ const VALID_BLOOD_TYPES = new Set([
 const WHO_DEFAULT_MIN_CELSIUS_X100 = 200;
 const WHO_DEFAULT_MAX_CELSIUS_X100 = 600;
 
-export function validate_threshold(threshold: TemperatureThreshold): GuardResult {
+export function validate_threshold(
+  threshold: TemperatureThreshold,
+): GuardResult {
   if (!VALID_BLOOD_TYPES.has(threshold.blood_type)) {
     return { ok: false, error: ContractError.InvalidThreshold };
   }

@@ -1,22 +1,19 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { NotificationEntity } from './entities/notification.entity';
 import { NotificationTemplateEntity } from './entities/notification-template.entity';
-
+import { NotificationEntity } from './entities/notification.entity';
 import { NotificationsGateway } from './gateways/notifications.gateway';
-
-import { SmsProvider } from './providers/sms.provider';
-import { PushProvider } from './providers/push.provider';
+import { OrderNotificationListener } from './listeners/order-notification.listener';
+import { NotificationsController } from './notifications.controller';
+import { NotificationsService } from './notifications.service';
+import { NotificationProcessor } from './processors/notification.processor';
 import { EmailProvider } from './providers/email.provider';
 import { InAppProvider } from './providers/in-app.provider';
-
-import { NotificationProcessor } from './processors/notification.processor';
-import { NotificationsService } from './notifications.service';
-import { NotificationsController } from './notifications.controller';
-import { OrderNotificationListener } from './listeners/order-notification.listener';
+import { PushProvider } from './providers/push.provider';
+import { SmsProvider } from './providers/sms.provider';
 
 @Module({
   imports: [
@@ -46,6 +43,6 @@ import { OrderNotificationListener } from './listeners/order-notification.listen
     // Service
     NotificationsService,
   ],
-  exports: [NotificationsService],
+  exports: [NotificationsService, EmailProvider],
 })
 export class NotificationsModule {}

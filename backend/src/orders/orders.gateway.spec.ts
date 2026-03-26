@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { OrdersGateway } from './orders.gateway';
+
 import { Server, Socket } from 'socket.io';
+
+import { OrdersGateway } from './orders.gateway';
 import { Order, OrderStatus } from './types/order.types';
 
 describe('OrdersGateway', () => {
@@ -56,7 +58,9 @@ describe('OrdersGateway', () => {
     it('should log client disconnection', () => {
       const logSpy = jest.spyOn(gateway['logger'], 'log');
       gateway.handleDisconnect(mockSocket as Socket);
-      expect(logSpy).toHaveBeenCalledWith(`Client disconnected: ${mockSocket.id}`);
+      expect(logSpy).toHaveBeenCalledWith(
+        `Client disconnected: ${mockSocket.id}`,
+      );
     });
   });
 
@@ -64,7 +68,7 @@ describe('OrdersGateway', () => {
     it('should join client to hospital room', () => {
       const hospitalId = 'HOSP-001';
       gateway.handleJoinHospital(mockSocket as Socket, { hospitalId });
-      
+
       expect(mockSocket.join).toHaveBeenCalledWith(`hospital:${hospitalId}`);
       expect(mockSocket.emit).toHaveBeenCalledWith('joined', {
         hospitalId,
@@ -75,9 +79,9 @@ describe('OrdersGateway', () => {
     it('should log room join', () => {
       const logSpy = jest.spyOn(gateway['logger'], 'log');
       const hospitalId = 'HOSP-001';
-      
+
       gateway.handleJoinHospital(mockSocket as Socket, { hospitalId });
-      
+
       expect(logSpy).toHaveBeenCalledWith(
         `Client ${mockSocket.id} joined room: hospital:${hospitalId}`,
       );
@@ -96,7 +100,10 @@ describe('OrdersGateway', () => {
       gateway.emitOrderUpdate(hospitalId, orderUpdate);
 
       expect(mockServer.to).toHaveBeenCalledWith(`hospital:${hospitalId}`);
-      expect(mockServer.emit).toHaveBeenCalledWith('order:updated', orderUpdate);
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'order:updated',
+        orderUpdate,
+      );
     });
 
     it('should log broadcast action', () => {

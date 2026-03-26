@@ -17,9 +17,15 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:contracts": "jest --testPathPatterns='__contracts__' --detectOpenHandles --forceExit",
+    "test:contracts:watch": "jest --testPathPatterns='__contracts__' --watch",
+    "test:contracts:cov": "jest --testPathPatterns='__contracts__' --coverage --detectOpenHandles --forceExit",
+    "prepare": "cd .. && husky backend/.husky"
   },
   "dependencies": {
+    "@nest-lab/throttler-storage-redis": "^1.2.0",
+    "@nestjs/bull": "^11.0.4",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
@@ -30,10 +36,14 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-socket.io": "^11.1.14",
     "@nestjs/schedule": "^6.1.1",
+    "@nestjs/swagger": "^11.2.6",
+    "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.0",
     "@nestjs/websockets": "^11.1.14",
     "@stellar/stellar-sdk": "^14.5.0",
+    "@types/bull": "^3.15.9",
     "africastalking": "^0.7.9",
+    "bull": "^4.16.5",
     "bullmq": "^5.69.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
@@ -43,6 +53,8 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.18.0",
+    "qrcode": "^1.5.4",
+    "redis": "^5.11.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
@@ -58,12 +70,14 @@
     "@types/babel__core": "^7.20.5",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
+    "@types/multer": "^2.1.0",
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^7.0.11",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
     "ioredis-mock": "^8.13.1",
@@ -78,6 +92,15 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.20.0",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.0"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write",
+      "jest --bail --findRelatedTests --passWithNoTests"
+    ]
   }
 }

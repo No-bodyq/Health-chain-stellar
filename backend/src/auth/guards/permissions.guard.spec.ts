@@ -1,11 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PermissionsGuard } from './permissions.guard';
-import { PermissionsService } from '../permissions.service';
-import { Permission } from '../enums/permission.enum';
-import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import { Test, TestingModule } from '@nestjs/testing';
+
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { PERMISSIONS_KEY } from '../decorators/require-permissions.decorator';
+import { Permission } from '../enums/permission.enum';
+import { PermissionsService } from '../permissions.service';
+
+import { PermissionsGuard } from './permissions.guard';
 
 // ────────────────────────────── helpers ──────────────────────────────────────
 
@@ -192,7 +194,9 @@ describe('PermissionsGuard', () => {
           unknown
         >;
         expect(response.requiredPermission).toBe(Permission.MANAGE_RIDERS);
-        expect(response.requiredPermissions).toContain(Permission.MANAGE_RIDERS);
+        expect(response.requiredPermissions).toContain(
+          Permission.MANAGE_RIDERS,
+        );
         expect(response.statusCode).toBe(403);
       }
     });
@@ -281,7 +285,11 @@ describe('PermissionsGuard', () => {
 
       await expect(
         guard.canActivate(
-          createMockContext({ id: '7', email: 'g@h.com', role: 'unknown_role' }),
+          createMockContext({
+            id: '7',
+            email: 'g@h.com',
+            role: 'unknown_role',
+          }),
         ),
       ).rejects.toThrow(ForbiddenException);
     });

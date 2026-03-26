@@ -1,12 +1,14 @@
 import { INestApplication } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { OrderConfirmedEvent } from '../events';
+import { MapsService } from '../maps/maps.service';
+import { RidersService } from '../riders/riders.service';
+
 import { DispatchService } from './dispatch.service';
 import { RiderAssignmentService } from './rider-assignment.service';
-import { OrderConfirmedEvent } from '../events';
-import { RidersService } from '../riders/riders.service';
-import { MapsService } from '../maps/maps.service';
-import { ConfigService } from '@nestjs/config';
 
 describe('Dispatch Event Integration (E2E)', () => {
   let app: INestApplication;
@@ -50,7 +52,9 @@ describe('Dispatch Event Integration (E2E)', () => {
     await app.init();
 
     dispatchService = app.get<DispatchService>(DispatchService);
-    riderAssignmentService = app.get<RiderAssignmentService>(RiderAssignmentService);
+    riderAssignmentService = app.get<RiderAssignmentService>(
+      RiderAssignmentService,
+    );
     eventEmitter = app.get<EventEmitter2>(EventEmitter2);
   });
 
@@ -109,19 +113,15 @@ describe('Dispatch Event Integration (E2E)', () => {
     mapsService.getTravelTimeSeconds.mockResolvedValue(620);
 
     await riderAssignmentService.handleOrderConfirmed(
-      new OrderConfirmedEvent(
-        'order-200',
-        'hospital-200',
-        'O-',
-        1,
-        'Ikeja',
-      ),
+      new OrderConfirmedEvent('order-200', 'hospital-200', 'O-', 1, 'Ikeja'),
     );
 
     const filtered = await dispatchService.getAssignmentLogs('order-200');
     const all = await dispatchService.getAssignmentLogs();
 
-    expect(filtered.data.every((log: any) => log.orderId === 'order-200')).toBe(true);
+    expect(filtered.data.every((log: any) => log.orderId === 'order-200')).toBe(
+      true,
+    );
     expect(all.data.length).toBeGreaterThanOrEqual(filtered.data.length);
   });
 });

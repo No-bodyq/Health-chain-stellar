@@ -1,14 +1,16 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { getQueueToken } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { getQueueToken } from '@nestjs/bullmq';
+
 import { Repository, MoreThanOrEqual } from 'typeorm';
 
-import { InventoryForecastingService } from './inventory-forecasting.service';
-import { OrderEntity } from '../orders/entities/order.entity';
-import { InventoryEntity } from './entities/inventory.entity';
 import { InventoryLowEvent } from '../events/inventory-low.event';
+import { OrderEntity } from '../orders/entities/order.entity';
+
+import { InventoryEntity } from './entities/inventory.entity';
+import { InventoryForecastingService } from './inventory-forecasting.service';
 
 describe('InventoryForecastingService', () => {
   let service: InventoryForecastingService;
@@ -66,9 +68,15 @@ describe('InventoryForecastingService', () => {
       ],
     }).compile();
 
-    service = module.get<InventoryForecastingService>(InventoryForecastingService);
-    orderRepo = module.get<Repository<OrderEntity>>(getRepositoryToken(OrderEntity));
-    inventoryRepo = module.get<Repository<InventoryEntity>>(getRepositoryToken(InventoryEntity));
+    service = module.get<InventoryForecastingService>(
+      InventoryForecastingService,
+    );
+    orderRepo = module.get<Repository<OrderEntity>>(
+      getRepositoryToken(OrderEntity),
+    );
+    inventoryRepo = module.get<Repository<InventoryEntity>>(
+      getRepositoryToken(InventoryEntity),
+    );
     eventEmitter = module.get<EventEmitter2>(EventEmitter2);
     outreachQueue = module.get(getQueueToken('donor-outreach'));
 
@@ -82,13 +90,30 @@ describe('InventoryForecastingService', () => {
   describe('calculateDemandForecasts', () => {
     it('should calculate average daily demand from order history', async () => {
       const mockOrders = [
-        { bloodType: 'A+', quantity: 10, deliveryAddress: 'City, Region1', createdAt: new Date() },
-        { bloodType: 'A+', quantity: 20, deliveryAddress: 'Town, Region1', createdAt: new Date() },
-        { bloodType: 'O-', quantity: 15, deliveryAddress: 'Village, Region2', createdAt: new Date() },
+        {
+          bloodType: 'A+',
+          quantity: 10,
+          deliveryAddress: 'City, Region1',
+          createdAt: new Date(),
+        },
+        {
+          bloodType: 'A+',
+          quantity: 20,
+          deliveryAddress: 'Town, Region1',
+          createdAt: new Date(),
+        },
+        {
+          bloodType: 'O-',
+          quantity: 15,
+          deliveryAddress: 'Village, Region2',
+          createdAt: new Date(),
+        },
       ];
 
       jest.spyOn(orderRepo, 'find').mockResolvedValue(mockOrders as any);
-      jest.spyOn(inventoryRepo, 'findOne').mockResolvedValue({ quantity: 50 } as any);
+      jest
+        .spyOn(inventoryRepo, 'findOne')
+        .mockResolvedValue({ quantity: 50 } as any);
 
       const forecasts = await service.calculateDemandForecasts();
 
@@ -109,11 +134,18 @@ describe('InventoryForecastingService', () => {
 
     it('should handle single data point', async () => {
       const mockOrders = [
-        { bloodType: 'AB+', quantity: 5, deliveryAddress: 'City, Region3', createdAt: new Date() },
+        {
+          bloodType: 'AB+',
+          quantity: 5,
+          deliveryAddress: 'City, Region3',
+          createdAt: new Date(),
+        },
       ];
 
       jest.spyOn(orderRepo, 'find').mockResolvedValue(mockOrders as any);
-      jest.spyOn(inventoryRepo, 'findOne').mockResolvedValue({ quantity: 20 } as any);
+      jest
+        .spyOn(inventoryRepo, 'findOne')
+        .mockResolvedValue({ quantity: 20 } as any);
 
       const forecasts = await service.calculateDemandForecasts();
 
@@ -124,11 +156,18 @@ describe('InventoryForecastingService', () => {
 
     it('should return Infinity for zero demand', async () => {
       const mockOrders = [
-        { bloodType: 'B-', quantity: 0, deliveryAddress: 'City, Region4', createdAt: new Date() },
+        {
+          bloodType: 'B-',
+          quantity: 0,
+          deliveryAddress: 'City, Region4',
+          createdAt: new Date(),
+        },
       ];
 
       jest.spyOn(orderRepo, 'find').mockResolvedValue(mockOrders as any);
-      jest.spyOn(inventoryRepo, 'findOne').mockResolvedValue({ quantity: 100 } as any);
+      jest
+        .spyOn(inventoryRepo, 'findOne')
+        .mockResolvedValue({ quantity: 100 } as any);
 
       const forecasts = await service.calculateDemandForecasts();
 
@@ -137,7 +176,12 @@ describe('InventoryForecastingService', () => {
 
     it('should handle zero stock', async () => {
       const mockOrders = [
-        { bloodType: 'O+', quantity: 30, deliveryAddress: 'City, Region5', createdAt: new Date() },
+        {
+          bloodType: 'O+',
+          quantity: 30,
+          deliveryAddress: 'City, Region5',
+          createdAt: new Date(),
+        },
       ];
 
       jest.spyOn(orderRepo, 'find').mockResolvedValue(mockOrders as any);
@@ -162,7 +206,9 @@ describe('InventoryForecastingService', () => {
         },
       ];
 
-      jest.spyOn(service, 'calculateDemandForecasts').mockResolvedValue(mockForecasts);
+      jest
+        .spyOn(service, 'calculateDemandForecasts')
+        .mockResolvedValue(mockForecasts);
 
       await service.runForecast();
 
@@ -183,7 +229,9 @@ describe('InventoryForecastingService', () => {
         },
       ];
 
-      jest.spyOn(service, 'calculateDemandForecasts').mockResolvedValue(mockForecasts);
+      jest
+        .spyOn(service, 'calculateDemandForecasts')
+        .mockResolvedValue(mockForecasts);
 
       await service.runForecast();
 
@@ -201,7 +249,9 @@ describe('InventoryForecastingService', () => {
         },
       ];
 
-      jest.spyOn(service, 'calculateDemandForecasts').mockResolvedValue(mockForecasts);
+      jest
+        .spyOn(service, 'calculateDemandForecasts')
+        .mockResolvedValue(mockForecasts);
 
       await service.runForecast();
 
@@ -230,15 +280,23 @@ describe('InventoryForecastingService', () => {
       const customModule = await Test.createTestingModule({
         providers: [
           InventoryForecastingService,
-          { provide: getRepositoryToken(OrderEntity), useValue: { find: jest.fn() } },
-          { provide: getRepositoryToken(InventoryEntity), useValue: { findOne: jest.fn() } },
+          {
+            provide: getRepositoryToken(OrderEntity),
+            useValue: { find: jest.fn() },
+          },
+          {
+            provide: getRepositoryToken(InventoryEntity),
+            useValue: { findOne: jest.fn() },
+          },
           { provide: EventEmitter2, useValue: mockEventEmitter },
           { provide: ConfigService, useValue: customConfigService },
           { provide: getQueueToken('donor-outreach'), useValue: mockQueue },
         ],
       }).compile();
 
-      const customService = customModule.get<InventoryForecastingService>(InventoryForecastingService);
+      const customService = customModule.get<InventoryForecastingService>(
+        InventoryForecastingService,
+      );
 
       const mockForecasts = [
         {
@@ -250,7 +308,9 @@ describe('InventoryForecastingService', () => {
         },
       ];
 
-      jest.spyOn(customService, 'calculateDemandForecasts').mockResolvedValue(mockForecasts);
+      jest
+        .spyOn(customService, 'calculateDemandForecasts')
+        .mockResolvedValue(mockForecasts);
 
       await customService.runForecast();
 

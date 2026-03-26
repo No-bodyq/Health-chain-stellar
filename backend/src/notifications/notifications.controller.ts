@@ -9,11 +9,13 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { NotificationsService } from './notifications.service';
-import { NotificationQueryDto } from './dto/notification-query.dto';
-import { SendNotificationDto } from './dto/send-notification.dto';
+
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
+
+import { NotificationQueryDto } from './dto/notification-query.dto';
+import { SendNotificationDto } from './dto/send-notification.dto';
+import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
 export class NotificationsController {

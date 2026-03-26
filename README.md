@@ -47,3 +47,21 @@ HealthDonor Protocol leverages Stellar + Soroban smart contracts to provide:
 🔒 Privacy-preserving donor identifiers
 
 All critical actions are enforced by smart contracts, reducing fraud and manual intervention.
+
+## Getting Started
+
+### Local Development Setup
+
+For contributors, we provide a Docker Compose stack for easy local development:
+
+```bash
+# Start Postgres + Redis
+docker-compose up -d
+
+# Setup backend
+cd backend
+npm install
+npm run start:dev
+```
+
+See [DOCKER_SETUP.md](./DOCKER_SETUP.md) for detailed instructions and optional development tools.

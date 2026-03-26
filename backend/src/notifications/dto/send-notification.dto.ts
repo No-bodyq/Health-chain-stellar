@@ -5,6 +5,7 @@ import {
   IsObject,
   IsNotEmpty,
 } from 'class-validator';
+
 import { NotificationChannel } from '../enums/notification-channel.enum';
 
 export class SendNotificationDto {

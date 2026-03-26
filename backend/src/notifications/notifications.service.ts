@@ -1,15 +1,16 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
+
 import { Queue } from 'bullmq';
 import * as Handlebars from 'handlebars';
+import { Repository } from 'typeorm';
 
-import { NotificationEntity } from './entities/notification.entity';
-import { NotificationTemplateEntity } from './entities/notification-template.entity';
-import { NotificationStatus } from './enums/notification-status.enum';
-import { SendNotificationDto } from './dto/send-notification.dto';
 import { NotificationQueryDto } from './dto/notification-query.dto';
+import { SendNotificationDto } from './dto/send-notification.dto';
+import { NotificationTemplateEntity } from './entities/notification-template.entity';
+import { NotificationEntity } from './entities/notification.entity';
+import { NotificationStatus } from './enums/notification-status.enum';
 import { NotificationJobData } from './processors/notification.processor';
 
 @Injectable()

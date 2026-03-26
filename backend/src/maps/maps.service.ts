@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+
 import { Redis } from 'ioredis';
+
 import { REDIS_CLIENT } from '../redis/redis.constants';
 
 @Injectable()
@@ -17,7 +19,10 @@ export class MapsService {
     return `maps:distance-matrix:${encodeURIComponent(origin)}:${encodeURIComponent(destination)}`;
   }
 
-  async getTravelTimeSeconds(origin: string, destination: string): Promise<number> {
+  async getTravelTimeSeconds(
+    origin: string,
+    destination: string,
+  ): Promise<number> {
     const cacheKey = this.buildDistanceCacheKey(origin, destination);
     const cached = await this.tryGetCachedDistance(cacheKey);
     if (cached !== null) {
@@ -61,7 +66,9 @@ export class MapsService {
       element.status !== 'OK' ||
       element.duration?.value === undefined
     ) {
-      throw new Error(`Distance Matrix element error: ${element?.status ?? 'UNKNOWN'}`);
+      throw new Error(
+        `Distance Matrix element error: ${element?.status ?? 'UNKNOWN'}`,
+      );
     }
 
     const travelTimeSeconds = element.duration.value;
@@ -77,7 +84,9 @@ export class MapsService {
       const cached = await this.redis.get(cacheKey);
       return cached ? Number(cached) : null;
     } catch (error) {
-      this.logger.warn(`Distance cache read failed for key ${cacheKey}: ${String(error)}`);
+      this.logger.warn(
+        `Distance cache read failed for key ${cacheKey}: ${String(error)}`,
+      );
       return null;
     }
   }
@@ -96,7 +105,9 @@ export class MapsService {
         String(travelTimeSeconds),
       );
     } catch (error) {
-      this.logger.warn(`Distance cache write failed for key ${cacheKey}: ${String(error)}`);
+      this.logger.warn(
+        `Distance cache write failed for key ${cacheKey}: ${String(error)}`,
+      );
     }
   }
 

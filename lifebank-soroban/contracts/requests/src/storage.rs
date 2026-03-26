@@ -1,63 +1,110 @@
-use crate::types::{DataKey, BloodUnit};
-use soroban_sdk::{Address, Env, Vec};
+use crate::error::ContractError;
+use crate::types::{BloodRequest, ContractMetadata, DataKey};
+use soroban_sdk::{Address, Env, String};
 
-// --- INSTANCE STORAGE (Admin & Authorization) ---
-// Used for high-frequency access and auth checks
-
-pub fn set_admin(env: Env, admin: Address) {
-    env.storage().instance().set(&DataKey::Admin, &admin);
+pub fn is_initialized(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::Initialized)
+        .unwrap_or(false)
 }
 
-pub fn get_admin(env: Env) -> Address {
-    env.storage().instance().get(&DataKey::Admin).expect("Admin not set")
-}
-
-pub fn is_authorized_bank(env: Env, bank: &Address) -> bool {
-    // If the Registrar key exists, the bank is authorized
-    env.storage().instance().has(&DataKey::Registrar(bank.clone()))
-}
-
-pub fn set_authorized_bank(env: Env, bank: &Address, authorized: bool) {
-    let key = DataKey::Registrar(bank.clone());
-    if authorized {
-        env.storage().instance().set(&key, &true);
+pub fn require_initialized(env: &Env) -> Result<(), ContractError> {
+    if is_initialized(env) {
+        Ok(())
     } else {
-        env.storage().instance().remove(&key);
+        Err(ContractError::NotInitialized)
     }
 }
 
-pub fn increment_blood_unit_id(env: Env) -> u64 {
-    let key = DataKey::UnitIdCounter;
-    let mut id: u64 = env.storage().instance().get(&key).unwrap_or(0);
-    id += 1;
-    env.storage().instance().set(&key, &id);
-    id
+pub fn set_initialized(env: &Env) {
+    env.storage().instance().set(&DataKey::Initialized, &true);
 }
 
-// --- PERSISTENT STORAGE (Unit Data & Large Indexes) ---
-// Used for data that grows over time
-
-pub fn set_blood_unit(env: Env, unit: &BloodUnit) {
-    // Standardize all blood unit data to Persistent storage
-    env.storage().persistent().set(&DataKey::BloodUnit(unit.id), unit);
+pub fn set_admin(env: &Env, admin: &Address) {
+    env.storage().instance().set(&DataKey::Admin, admin);
 }
 
-pub fn get_blood_unit(env: Env, id: u64) -> Option<BloodUnit> {
-    env.storage().persistent().get(&DataKey::BloodUnit(id))
+pub fn get_admin(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .expect("admin must be set after initialization")
 }
 
-pub fn add_to_bank_index(env: Env, unit: &BloodUnit) {
-    let key = DataKey::BankUnits(unit.bank_id.clone());
-    let mut units: Vec<u64> = env.storage().persistent().get(&key).unwrap_or(Vec::new(&env));
-    units.push_back(unit.id);
-    env.storage().persistent().set(&key, &units);
+pub fn set_inventory_contract(env: &Env, inventory_contract: &Address) {
+    env.storage()
+        .instance()
+        .set(&DataKey::InventoryContract, inventory_contract);
 }
 
-pub fn add_to_donor_index(env: Env, unit: &BloodUnit) {
-    if let Some(donor_id) = &unit.donor_id {
-        let key = DataKey::DonorUnits(donor_id.clone());
-        let mut units: Vec<u64> = env.storage().persistent().get(&key).unwrap_or(Vec::new(&env));
-        units.push_back(unit.id);
-        env.storage().persistent().set(&key, &units);
+pub fn get_inventory_contract(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::InventoryContract)
+        .expect("inventory contract must be set after initialization")
+}
+
+pub fn set_request_counter(env: &Env, value: u64) {
+    env.storage().instance().set(&DataKey::RequestCounter, &value);
+}
+
+pub fn get_request_counter(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&DataKey::RequestCounter)
+        .expect("request counter must be set after initialization")
+}
+
+pub fn increment_request_counter(env: &Env) -> u64 {
+    let next = get_request_counter(env) + 1;
+    set_request_counter(env, next);
+    next
+}
+
+pub fn authorize_hospital(env: &Env, hospital: &Address) {
+    env.storage()
+        .instance()
+        .set(&DataKey::AuthorizedHospital(hospital.clone()), &true);
+}
+
+pub fn revoke_hospital(env: &Env, hospital: &Address) {
+    env.storage()
+        .instance()
+        .remove(&DataKey::AuthorizedHospital(hospital.clone()));
+}
+
+pub fn is_hospital_authorized(env: &Env, hospital: &Address) -> bool {
+    env.storage()
+        .instance()
+        .get::<DataKey, bool>(&DataKey::AuthorizedHospital(hospital.clone()))
+        .unwrap_or(false)
+}
+
+pub fn set_request(env: &Env, request: &BloodRequest) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::Request(request.id), request);
+}
+
+pub fn get_request(env: &Env, request_id: u64) -> Option<BloodRequest> {
+    env.storage().persistent().get(&DataKey::Request(request_id))
+}
+
+pub fn set_metadata(env: &Env, metadata: &ContractMetadata) {
+    env.storage().instance().set(&DataKey::Metadata, metadata);
+}
+
+pub fn get_metadata(env: &Env) -> ContractMetadata {
+    env.storage()
+        .instance()
+        .get(&DataKey::Metadata)
+        .expect("metadata must be set after initialization")
+}
+
+pub fn default_metadata(env: &Env) -> ContractMetadata {
+    ContractMetadata {
+        name: String::from_str(env, "Blood Request Management"),
+        version: 1,
     }
 }

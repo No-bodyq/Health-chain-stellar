@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner, Table, TableIndex } from 'typeorm';
 
-export class CreateBlockchainTables1708000000000
-  implements MigrationInterface
-{
+export class CreateBlockchainTables1708000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Create blockchain_events table
     await queryRunner.createTable(

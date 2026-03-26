@@ -1,11 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { OrderConfirmedEvent } from '../events';
+import { MapsService } from '../maps/maps.service';
+import { RidersService } from '../riders/riders.service';
+
 import { DispatchService } from './dispatch.service';
 import { RiderAssignmentService } from './rider-assignment.service';
-import { OrderConfirmedEvent } from '../events';
-import { RidersService } from '../riders/riders.service';
-import { MapsService } from '../maps/maps.service';
-import { ConfigService } from '@nestjs/config';
 
 describe('DispatchService Integration Tests', () => {
   let dispatchService: DispatchService;
@@ -45,7 +47,9 @@ describe('DispatchService Integration Tests', () => {
     }).compile();
 
     dispatchService = module.get<DispatchService>(DispatchService);
-    riderAssignmentService = module.get<RiderAssignmentService>(RiderAssignmentService);
+    riderAssignmentService = module.get<RiderAssignmentService>(
+      RiderAssignmentService,
+    );
     eventEmitter = module.get<EventEmitter2>(EventEmitter2);
   });
 
@@ -140,7 +144,8 @@ describe('DispatchService Integration Tests', () => {
       expect(logs.data.some((log: any) => log.status === 'timeout')).toBe(true);
       expect(
         logs.data.some(
-          (log: any) => log.status === 'pending' && log.selectedRiderId === 'rider-b',
+          (log: any) =>
+            log.status === 'pending' && log.selectedRiderId === 'rider-b',
         ),
       ).toBe(true);
       jest.useRealTimers();
@@ -172,7 +177,11 @@ describe('DispatchService Integration Tests', () => {
           'Yaba',
         ),
       );
-      await dispatchService.respondToAssignment('order-accepted', 'rider-a', true);
+      await dispatchService.respondToAssignment(
+        'order-accepted',
+        'rider-a',
+        true,
+      );
 
       expect(emitSpy).toHaveBeenCalledWith(
         'order.rider.assigned',

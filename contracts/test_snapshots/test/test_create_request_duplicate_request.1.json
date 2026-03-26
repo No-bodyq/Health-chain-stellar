@@ -168,7 +168,7 @@
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
             "key": {
-              "symbol": "HOSPITALS"
+              "symbol": "HOSPS"
             },
             "durability": "persistent"
           }
@@ -181,7 +181,7 @@
                 "ext": "v0",
                 "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
                 "key": {
-                  "symbol": "HOSPITALS"
+                  "symbol": "HOSPS"
                 },
                 "durability": "persistent",
                 "val": {
@@ -293,6 +293,20 @@
                           },
                           {
                             "key": {
+                              "symbol": "fulfilled_quantity_ml"
+                            },
+                            "val": {
+                              "u32": 0
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "fulfillment_timestamp"
+                            },
+                            "val": "void"
+                          },
+                          {
+                            "key": {
                               "symbol": "hospital_id"
                             },
                             "val": {
@@ -321,6 +335,26 @@
                             },
                             "val": {
                               "u64": 7200
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "reserved_unit_ids"
+                            },
+                            "val": {
+                              "vec": []
+                            }
+                          },
+                          {
+                            "key": {
+                              "symbol": "status"
+                            },
+                            "val": {
+                              "vec": [
+                                {
+                                  "symbol": "Pending"
+                                }
+                              ]
                             }
                           },
                           {

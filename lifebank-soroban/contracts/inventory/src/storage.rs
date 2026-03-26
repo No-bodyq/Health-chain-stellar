@@ -1,9 +1,11 @@
 use crate::types::{BloodStatus, BloodUnit, DataKey, StatusChangeHistory};
 use soroban_sdk::{Address, Env, String, Vec};
 
-/// Maximum expiration time (42 days for whole blood)
-pub const MAX_EXPIRATION_DAYS: u64 = 42;
 pub const SECONDS_PER_DAY: u64 = 86400;
+
+/// Standard shelf life for whole blood: 35 days.
+/// Used to compute expiration_timestamp from ledger time at registration.
+pub const BLOOD_SHELF_LIFE_DAYS: u64 = 35;
 
 /// Get the admin address
 pub fn get_admin(env: &Env) -> Address {
@@ -96,6 +98,30 @@ pub fn add_to_status_index(env: &Env, blood_unit: &BloodUnit) {
 
     units.push_back(blood_unit.id);
     env.storage().persistent().set(&key, &units);
+}
+
+/// Remove a blood unit ID from the status index bucket for `old_status`.
+///
+/// Called whenever a unit transitions to a new status so that query results
+/// (e.g. "all Reserved units") remain accurate after every transition.
+pub fn remove_from_status_index(env: &Env, blood_unit_id: u64, old_status: BloodStatus) {
+    let key = DataKey::StatusIndex(old_status);
+    let mut units: Vec<u64> = env
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(Vec::new(env));
+
+    // Rebuild without the target ID.  Soroban Vec has no retain/remove,
+    // so we iterate and push items we want to keep into a new Vec.
+    let mut updated: Vec<u64> = Vec::new(env);
+    for i in 0..units.len() {
+        let id = units.get(i).unwrap();
+        if id != blood_unit_id {
+            updated.push_back(id);
+        }
+    }
+    env.storage().persistent().set(&key, &updated);
 }
 
 /// Add blood unit to donor index (if donor_id exists)

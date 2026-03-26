@@ -1,9 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { OrdersController } from './orders.controller';
-import { OrdersService } from './orders.service';
+import { Test, TestingModule } from '@nestjs/testing';
+
 import { OrderQueryParamsDto } from './dto/order-query-params.dto';
+import { OrdersController } from './orders.controller';
 import { OrdersGateway } from './orders.gateway';
+import { OrdersService } from './orders.service';
 
 describe('OrdersController', () => {
   let controller: OrdersController;

@@ -1,14 +1,19 @@
-import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
-import { SorobanService } from './services/soroban.service';
-import { IdempotencyService } from './services/idempotency.service';
-import { SorobanTxProcessor } from './processors/soroban-tx.processor';
-import { SorobanDlqProcessor } from './processors/soroban-dlq.processor';
+import { Module } from '@nestjs/common';
+
+import { CompensationModule } from '../common/compensation/compensation.module';
+
 import { BlockchainController } from './controllers/blockchain.controller';
 import { AdminGuard } from './guards/admin.guard';
+import { SorobanDlqProcessor } from './processors/soroban-dlq.processor';
+import { SorobanTxProcessor } from './processors/soroban-tx.processor';
+import { IdempotencyService } from './services/idempotency.service';
+import { SorobanService } from './services/soroban.service';
+import { JobDeduplicationPlugin } from './plugins/job-deduplication.plugin';
 
 @Module({
   imports: [
+    CompensationModule,
     BullModule.registerQueue(
       {
         name: 'soroban-tx-queue',
@@ -38,6 +43,7 @@ import { AdminGuard } from './guards/admin.guard';
   providers: [
     SorobanService,
     IdempotencyService,
+    JobDeduplicationPlugin,
     SorobanTxProcessor,
     SorobanDlqProcessor,
     AdminGuard,

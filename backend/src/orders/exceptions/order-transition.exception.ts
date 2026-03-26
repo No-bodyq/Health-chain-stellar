@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+
 import { OrderStatus } from '../enums/order-status.enum';
 
 export interface TransitionErrorDetail {

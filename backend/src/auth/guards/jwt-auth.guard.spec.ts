@@ -1,8 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { Test, TestingModule } from '@nestjs/testing';
+
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 // ────────────────────────────── helpers ──────────────────────────────────────
 
@@ -45,7 +47,10 @@ describe('JwtAuthGuard', () => {
 
       // We spy on super.canActivate to ensure it is NOT called
       const superSpy = jest
-        .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(guard)), 'canActivate')
+        .spyOn(
+          Object.getPrototypeOf(Object.getPrototypeOf(guard)),
+          'canActivate',
+        )
         .mockReturnValue(true);
 
       const result = guard.canActivate(createMockContext());
@@ -62,7 +67,10 @@ describe('JwtAuthGuard', () => {
 
       // super.canActivate is from AuthGuard('jwt') — it calls passport
       const superActivate = jest
-        .spyOn(Object.getPrototypeOf(Object.getPrototypeOf(guard)), 'canActivate')
+        .spyOn(
+          Object.getPrototypeOf(Object.getPrototypeOf(guard)),
+          'canActivate',
+        )
         .mockReturnValue(true as unknown as Promise<boolean>);
 
       guard.canActivate(createMockContext());

@@ -1,14 +1,17 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+
 import { Repository } from 'typeorm';
-import { NotificationProcessor } from './notification.processor';
+
 import { NotificationEntity } from '../entities/notification.entity';
-import { NotificationStatus } from '../enums/notification-status.enum';
 import { NotificationChannel } from '../enums/notification-channel.enum';
-import { SmsProvider } from '../providers/sms.provider';
-import { PushProvider } from '../providers/push.provider';
+import { NotificationStatus } from '../enums/notification-status.enum';
 import { EmailProvider } from '../providers/email.provider';
 import { InAppProvider } from '../providers/in-app.provider';
+import { PushProvider } from '../providers/push.provider';
+import { SmsProvider } from '../providers/sms.provider';
+
+import { NotificationProcessor } from './notification.processor';
 
 describe('Duplicate Notification Retry Protection', () => {
   let processor: NotificationProcessor;
@@ -58,19 +61,18 @@ describe('Duplicate Notification Retry Protection', () => {
       },
     };
 
-    
     jest
       .spyOn(repo, 'findOne')
       .mockResolvedValueOnce({
         ...mockNotification,
         status: NotificationStatus.PENDING,
       } as any)
-      
+
       .mockResolvedValueOnce({
         ...mockNotification,
         status: NotificationStatus.SENT,
       } as any)
-      
+
       .mockResolvedValueOnce({
         ...mockNotification,
         status: NotificationStatus.SENT,
@@ -78,7 +80,6 @@ describe('Duplicate Notification Retry Protection', () => {
 
     (smsProvider.send as jest.Mock).mockResolvedValue(true);
 
-    
     await processor.process(job);
     await processor.process(job);
     await processor.process(job);
