@@ -5,48 +5,24 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-
 import { Repository } from 'typeorm';
 
-import {
-  OrderConfirmedEvent,
-  OrderCancelledEvent,
-  OrderStatusUpdatedEvent,
-  OrderRiderAssignedEvent,
-  OrderDispatchedEvent,
-  OrderInTransitEvent,
-  OrderDeliveredEvent,
-  OrderDisputedEvent,
-  OrderResolvedEvent,
-} from '../events';
-import { InventoryService } from '../inventory/inventory.service';
-
-import { OrderQueryParamsDto } from './dto/order-query-params.dto';
-import { OrdersResponseDto } from './dto/orders-response.dto';
-import { OrderEventEntity } from './entities/order-event.entity';
+import { OrderStateMachine } from './state-machine/order-state-machine';
+import { OrderEventStoreService } from './services/order-event-store.service';
 import { OrderEntity } from './entities/order.entity';
+import { OrderEventEntity } from './entities/order-event.entity';
 import { OrderEventType } from './enums/order-event-type.enum';
 import { OrderStatus } from './enums/order-status.enum';
-import { OrdersGateway } from './gateways/orders.gateway';
-import { OrderEventStoreService } from './services/order-event-store.service';
-import { OrderStateMachine } from './state-machine/order-state-machine';
 import { Order, BloodType } from './types/order.types';
-
-import type { OrderStatus as OrderStatusType } from './types/order.types';
-
-/** Maps each terminal OrderStatus to its corresponding event-store type. */
-const STATUS_TO_EVENT_TYPE: Record<OrderStatus, OrderEventType> = {
-  [OrderStatus.PENDING]: OrderEventType.ORDER_CREATED,
-  [OrderStatus.CONFIRMED]: OrderEventType.ORDER_CONFIRMED,
-  [OrderStatus.DISPATCHED]: OrderEventType.ORDER_DISPATCHED,
-  [OrderStatus.IN_TRANSIT]: OrderEventType.ORDER_IN_TRANSIT,
-  [OrderStatus.DELIVERED]: OrderEventType.ORDER_DELIVERED,
-  [OrderStatus.CANCELLED]: OrderEventType.ORDER_CANCELLED,
-  [OrderStatus.DISPUTED]: OrderEventType.ORDER_DISPUTED,
-  [OrderStatus.RESOLVED]: OrderEventType.ORDER_RESOLVED,
-};
+import { OrderQueryParamsDto } from './dto/order-query-params.dto';
+import { OrdersResponseDto } from './dto/orders-response.dto';
+import { OrderRiderAssignedEvent } from '../events';
+import { InventoryService } from '../inventory/inventory.service';
+import { UpdateRequestStatusDto } from './dto/update-request-status.dto';
+import { RequestStatusService } from './services/request-status.service';
+import { RequestStatusAction } from './enums/request-status-action.enum';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class OrdersService {
@@ -56,17 +32,17 @@ export class OrdersService {
   constructor(
     @InjectRepository(OrderEntity)
     private readonly orderRepo: Repository<OrderEntity>,
-    private readonly eventEmitter: EventEmitter2,
     private readonly stateMachine: OrderStateMachine,
     private readonly eventStore: OrderEventStoreService,
-    private readonly ordersGateway: OrdersGateway,
+    private readonly eventEmitter: EventEmitter2,
     private readonly inventoryService: InventoryService,
+    private readonly requestStatusService: RequestStatusService,
   ) {}
 
   // ─── Queries ─────────────────────────────────────────────────────────────
 
   async findAll(status?: string, hospitalId?: string) {
-    const where: any = {};
+    const where: Partial<OrderEntity> = {};
     if (status) where.status = status as OrderStatus;
     if (hospitalId) where.hospitalId = hospitalId;
 
@@ -74,9 +50,7 @@ export class OrdersService {
     return { message: 'Orders retrieved successfully', data: orders };
   }
 
-  async findAllWithFilters(
-    params: OrderQueryParamsDto,
-  ): Promise<OrdersResponseDto> {
+  async findAllWithFilters(params: OrderQueryParamsDto): Promise<OrdersResponseDto> {
     const {
       hospitalId,
       startDate,
@@ -92,21 +66,21 @@ export class OrdersService {
 
     // Start with all orders for the hospital
     let filteredOrders = this.orders.filter(
-      (order) => order.hospital.id === hospitalId,
+      (order) => order.hospital.id === hospitalId
     );
 
     // Apply date range filter
     if (startDate) {
       const start = new Date(startDate);
       filteredOrders = filteredOrders.filter(
-        (order) => new Date(order.placedAt) >= start,
+        (order) => new Date(order.placedAt) >= start
       );
     }
 
     if (endDate) {
       const end = new Date(endDate);
       filteredOrders = filteredOrders.filter(
-        (order) => new Date(order.placedAt) <= end,
+        (order) => new Date(order.placedAt) <= end
       );
     }
 
@@ -114,15 +88,15 @@ export class OrdersService {
     if (bloodTypes) {
       const bloodTypeArray = bloodTypes.split(',') as BloodType[];
       filteredOrders = filteredOrders.filter((order) =>
-        bloodTypeArray.includes(order.bloodType),
+        bloodTypeArray.includes(order.bloodType)
       );
     }
 
     // Apply status filter
     if (statuses) {
-      const statusArray = statuses.split(',');
+      const statusArray = statuses.split(',') as OrderStatus[];
       filteredOrders = filteredOrders.filter((order) =>
-        statusArray.includes(order.status as string),
+        statusArray.includes(order.status)
       );
     }
 
@@ -130,20 +104,16 @@ export class OrdersService {
     if (bloodBank) {
       const searchTerm = bloodBank.toLowerCase();
       filteredOrders = filteredOrders.filter((order) =>
-        order.bloodBank.name.toLowerCase().includes(searchTerm),
+        order.bloodBank.name.toLowerCase().includes(searchTerm)
       );
     }
 
     // Sort orders with active orders prioritization
-    const activeStatuses = [
-      OrderStatus.PENDING,
-      OrderStatus.CONFIRMED,
-      OrderStatus.IN_TRANSIT,
-    ];
+    const activeStatuses = ['pending', 'confirmed', 'in_transit'];
     filteredOrders.sort((a, b) => {
       // First, prioritize active orders
-      const aIsActive = activeStatuses.includes(a.status as any);
-      const bIsActive = activeStatuses.includes(b.status as any);
+      const aIsActive = activeStatuses.includes(a.status);
+      const bIsActive = activeStatuses.includes(b.status);
 
       if (aIsActive && !bIsActive) return -1;
       if (!aIsActive && bIsActive) return 1;
@@ -228,9 +198,7 @@ export class OrdersService {
 
   async create(createOrderDto: any, actorId?: string) {
     if (!createOrderDto.bloodBankId) {
-      throw new BadRequestException(
-        'bloodBankId is required to place an order.',
-      );
+      throw new BadRequestException('bloodBankId is required to place an order.');
     }
 
     try {
@@ -291,9 +259,22 @@ export class OrdersService {
    * persists the event, and emits both an internal domain event and a
    * WebSocket notification.
    */
-  async updateStatus(id: string, status: string, actorId?: string) {
-    const nextStatus = status as OrderStatus;
-    return this.transitionStatus(id, nextStatus, actorId);
+  async updateStatus(
+    id: string,
+    statusUpdate: UpdateRequestStatusDto | string,
+    actorId?: string,
+    actorRole?: string,
+  ) {
+    const dto: UpdateRequestStatusDto =
+      typeof statusUpdate === 'string'
+        ? { status: statusUpdate as OrderStatus }
+        : statusUpdate;
+
+    const order = await this.findOrderOrFail(id);
+    await this.requestStatusService.applyStatusUpdate(order, dto, actorId, actorRole);
+    const updated = await this.orderRepo.save(order);
+
+    return { message: 'Order status updated successfully', data: updated };
   }
 
   /**
@@ -302,7 +283,13 @@ export class OrdersService {
    * be cancelled and will throw OrderTransitionException.
    */
   async remove(id: string, actorId?: string) {
-    await this.transitionStatus(id, OrderStatus.CANCELLED, actorId);
+    const order = await this.findOrderOrFail(id);
+    await this.requestStatusService.applyStatusUpdate(
+      order,
+      { action: RequestStatusAction.CANCEL },
+      actorId,
+    );
+    await this.orderRepo.save(order);
     return { message: 'Order cancelled successfully', data: { id } };
   }
 
@@ -316,172 +303,7 @@ export class OrdersService {
       new OrderRiderAssignedEvent(orderId, riderId),
     );
 
-    return {
-      message: 'Rider assigned successfully',
-      data: { orderId, riderId },
-    };
-  }
-
-  async raiseDispute(
-    orderId: string,
-    reason: string,
-    disputeId: string,
-    actorId?: string,
-  ) {
-    const order = await this.findOrderOrFail(orderId);
-    order.disputeId = disputeId;
-    order.disputeReason = reason;
-    await this.orderRepo.save(order);
-
-    return this.transitionStatus(orderId, OrderStatus.DISPUTED, actorId);
-  }
-
-  async resolveDispute(orderId: string, resolution: string, actorId?: string) {
-    // We can transition to RESOLVED first, or directly to terminal state if desired.
-    // For now, let's transition to RESOLVED.
-    await this.transitionStatus(orderId, OrderStatus.RESOLVED, actorId);
-
-    // Then handle final state based on resolution (simplified logic)
-    if (resolution === 'REFUND') {
-      return this.transitionStatus(orderId, OrderStatus.CANCELLED, actorId);
-    } else {
-      return this.transitionStatus(orderId, OrderStatus.DELIVERED, actorId);
-    }
-  }
-
-  // ─── Core state-transition pipeline ──────────────────────────────────────
-
-  /**
-   * The single choke-point for every order state change:
-   *
-   * 1. Load the order and read its current status.
-   * 2. Ask the state machine to validate (throws OrderTransitionException on
-   *    invalid edges — e.g. DELIVERED → DISPATCHED).
-   * 3. Append an immutable row to the order_events table (event store).
-   * 4. Persist the updated status on the orders row.
-   * 5. Emit the specific NestJS domain event (e.g. OrderDispatchedEvent).
-   * 6. Broadcast `order.status.updated` over WebSocket to all connected clients.
-   */
-  private async transitionStatus(
-    orderId: string,
-    nextStatus: OrderStatus,
-    actorId?: string,
-  ): Promise<{ message: string; data: OrderEntity }> {
-    const order = await this.findOrderOrFail(orderId);
-    const previousStatus = order.status;
-
-    // ① Validate — throws OrderTransitionException if the edge is illegal.
-    this.stateMachine.transition(previousStatus, nextStatus);
-
-    // ② Persist to the event store (immutable append).
-    const eventType = STATUS_TO_EVENT_TYPE[nextStatus];
-    await this.eventStore.persistEvent({
-      orderId,
-      eventType,
-      payload: { previousStatus, newStatus: nextStatus },
-      actorId,
-    });
-
-    // ③ Update the mutable status column.
-    order.status = nextStatus;
-    const updated = await this.orderRepo.save(order);
-
-    // ④ Emit internal NestJS domain events.
-    this.emitDomainEvent(updated, previousStatus, nextStatus);
-
-    // ⑤ Broadcast WebSocket notification.
-    this.ordersGateway.emitOrderStatusUpdated({
-      orderId,
-      previousStatus,
-      newStatus: nextStatus,
-      eventType,
-      actorId: actorId ?? null,
-      timestamp: new Date(),
-    });
-
-    this.logger.log(
-      `Order ${orderId} transitioned: ${previousStatus} → ${nextStatus}`,
-    );
-
-    return { message: 'Order status updated successfully', data: updated };
-  }
-
-  /** Fires the fine-grained domain event that corresponds to `nextStatus`. */
-  private emitDomainEvent(
-    order: OrderEntity,
-    previousStatus: OrderStatus,
-    nextStatus: OrderStatus,
-  ): void {
-    // Generic catch-all event (consumed by DispatchService, etc.)
-    this.eventEmitter.emit(
-      'order.status.updated',
-      new OrderStatusUpdatedEvent(order.id, previousStatus, nextStatus),
-    );
-
-    switch (nextStatus) {
-      case OrderStatus.CONFIRMED:
-        this.eventEmitter.emit(
-          'order.confirmed',
-          new OrderConfirmedEvent(
-            order.id,
-            order.hospitalId,
-            order.bloodType,
-            order.quantity,
-            order.deliveryAddress,
-          ),
-        );
-        break;
-
-      case OrderStatus.DISPATCHED:
-        this.eventEmitter.emit(
-          'order.dispatched',
-          new OrderDispatchedEvent(order.id, order.riderId ?? ''),
-        );
-        break;
-
-      case OrderStatus.IN_TRANSIT:
-        this.eventEmitter.emit(
-          'order.in_transit',
-          new OrderInTransitEvent(order.id),
-        );
-        break;
-
-      case OrderStatus.DELIVERED:
-        this.eventEmitter.emit(
-          'order.delivered',
-          new OrderDeliveredEvent(order.id),
-        );
-        break;
-
-      case OrderStatus.DISPUTED:
-        this.eventEmitter.emit(
-          'order.disputed',
-          new OrderDisputedEvent(
-            order.id,
-            order.disputeId ?? '',
-            order.disputeReason ?? '',
-          ),
-        );
-        break;
-
-      case OrderStatus.RESOLVED:
-        this.eventEmitter.emit(
-          'order.resolved',
-          new OrderResolvedEvent(order.id, 'Resolved'),
-        );
-        break;
-
-      case OrderStatus.CANCELLED:
-        this.eventEmitter.emit(
-          'order.cancelled',
-          new OrderCancelledEvent(
-            order.id,
-            order.hospitalId,
-            'Status transition',
-          ),
-        );
-        break;
-    }
+    return { message: 'Rider assigned successfully', data: { orderId, riderId } };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
