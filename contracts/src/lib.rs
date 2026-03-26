@@ -307,6 +307,39 @@ pub struct DisputeResolvedEvent {
     pub resolved_at: u64,
 }
 
+/// Storage key literals (compile-time guarded for `symbol_short!` compatibility).
+const BLOOD_UNITS_KEY: &str = "UNITS";
+const NEXT_ID_KEY: &str = "NEXT_ID";
+const BLOOD_BANKS_KEY: &str = "BANKS";
+const HOSPITALS_KEY: &str = "HOSPS";
+const ADMIN_KEY: &str = "ADMIN";
+const REQUESTS_KEY: &str = "REQUESTS";
+const NEXT_REQUEST_ID_KEY: &str = "NEXT_REQ";
+const REQUEST_KEYS_KEY: &str = "REQ_KEYS";
+const BLOOD_REQUESTS_KEY: &str = "REQS";
+const PAYMENTS_KEY: &str = "PAY_RECS";
+const NEXT_PAYMENT_ID_KEY: &str = "NPAY_ID";
+const DISPUTES_KEY: &str = "DISP_REC";
+const NEXT_DISPUTE_ID_KEY: &str = "NDIS_ID";
+const CUSTODY_EVENTS_KEY: &str = "CUSTODY";
+const HISTORY_KEY: &str = "HISTORY";
+
+const _: () = assert!(BLOOD_UNITS_KEY.len() <= 9);
+const _: () = assert!(NEXT_ID_KEY.len() <= 9);
+const _: () = assert!(BLOOD_BANKS_KEY.len() <= 9);
+const _: () = assert!(HOSPITALS_KEY.len() <= 9);
+const _: () = assert!(ADMIN_KEY.len() <= 9);
+const _: () = assert!(REQUESTS_KEY.len() <= 9);
+const _: () = assert!(NEXT_REQUEST_ID_KEY.len() <= 9);
+const _: () = assert!(REQUEST_KEYS_KEY.len() <= 9);
+const _: () = assert!(BLOOD_REQUESTS_KEY.len() <= 9);
+const _: () = assert!(PAYMENTS_KEY.len() <= 9);
+const _: () = assert!(NEXT_PAYMENT_ID_KEY.len() <= 9);
+const _: () = assert!(DISPUTES_KEY.len() <= 9);
+const _: () = assert!(NEXT_DISPUTE_ID_KEY.len() <= 9);
+const _: () = assert!(CUSTODY_EVENTS_KEY.len() <= 9);
+const _: () = assert!(HISTORY_KEY.len() <= 9);
+
 /// Storage keys (single source of truth)
 pub(crate) const BLOOD_UNITS: Symbol = symbol_short!("UNITS");
 pub(crate) const NEXT_ID: Symbol = symbol_short!("NEXT_ID");
@@ -2344,8 +2377,6 @@ impl HealthChainContract {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::Ledger;
-    use soroban_sdk::IntoVal;
     use soroban_sdk::{
         symbol_short, testutils::Address as _, testutils::Events, testutils::Ledger as _, Address,
         Env, IntoVal, String, Symbol, TryFromVal,

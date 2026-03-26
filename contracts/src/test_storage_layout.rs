@@ -10,7 +10,8 @@ use soroban_sdk::{
 
 use crate::{
     BloodStatus, BloodType, BloodUnit, HealthChainContract, HealthChainContractClient, ADMIN,
-    BLOOD_UNITS,
+    BLOOD_BANKS, BLOOD_UNITS, CUSTODY_EVENTS, DISPUTES, HISTORY, HOSPITALS, NEXT_DISPUTE_ID,
+    NEXT_ID, NEXT_PAYMENT_ID, NEXT_REQUEST_ID, PAYMENTS, REQUEST_KEYS, REQUESTS,
 };
 
 #[test]
@@ -331,4 +332,48 @@ fn test_register_two_units_same_bank_creates_two_entries() {
         // assert!(bank_units.contains(&unit_id_1));
         // assert!(bank_units.contains(&unit_id_2));
     });
+}
+
+#[test]
+fn test_storage_symbol_keys_match_compatibility_contract() {
+    assert_eq!(BLOOD_UNITS, symbol_short!("UNITS"));
+    assert_eq!(NEXT_ID, symbol_short!("NEXT_ID"));
+    assert_eq!(BLOOD_BANKS, symbol_short!("BANKS"));
+    assert_eq!(HOSPITALS, symbol_short!("HOSPS"));
+    assert_eq!(ADMIN, symbol_short!("ADMIN"));
+    assert_eq!(REQUESTS, symbol_short!("REQUESTS"));
+    assert_eq!(NEXT_REQUEST_ID, symbol_short!("NEXT_REQ"));
+    assert_eq!(REQUEST_KEYS, symbol_short!("REQ_KEYS"));
+    assert_eq!(PAYMENTS, symbol_short!("PAY_RECS"));
+    assert_eq!(NEXT_PAYMENT_ID, symbol_short!("NPAY_ID"));
+    assert_eq!(DISPUTES, symbol_short!("DISP_REC"));
+    assert_eq!(NEXT_DISPUTE_ID, symbol_short!("NDIS_ID"));
+    assert_eq!(CUSTODY_EVENTS, symbol_short!("CUSTODY"));
+    assert_eq!(HISTORY, symbol_short!("HISTORY"));
+}
+
+#[test]
+fn test_storage_layout_fingerprint_regression_guard() {
+    let env = Env::default();
+    let mut unique = Map::<Symbol, bool>::new(&env);
+    unique.set(BLOOD_UNITS, true);
+    unique.set(NEXT_ID, true);
+    unique.set(BLOOD_BANKS, true);
+    unique.set(HOSPITALS, true);
+    unique.set(ADMIN, true);
+    unique.set(REQUESTS, true);
+    unique.set(NEXT_REQUEST_ID, true);
+    unique.set(REQUEST_KEYS, true);
+    unique.set(PAYMENTS, true);
+    unique.set(NEXT_PAYMENT_ID, true);
+    unique.set(DISPUTES, true);
+    unique.set(NEXT_DISPUTE_ID, true);
+    unique.set(CUSTODY_EVENTS, true);
+    unique.set(HISTORY, true);
+
+    assert_eq!(
+        unique.len(),
+        14,
+        "Storage layout compatibility changed: duplicate key symbols detected. Add migration guardrails before changing key names."
+    );
 }
