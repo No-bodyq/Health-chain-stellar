@@ -19,6 +19,7 @@ import { Repository } from 'typeorm';
 
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { UserEntity } from '../users/entities/user.entity';
+import { ErrorCode } from '../common/errors/error-codes.enum';
 
 import { JwtPayload } from './jwt.strategy';
 import { hashPassword, verifyPassword } from './utils/password.util';
@@ -60,7 +61,12 @@ export class AuthService {
       where: { email: loginDto.email.toLowerCase() },
     });
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException(
+        JSON.stringify({
+          code: ErrorCode.AUTH_INVALID_CREDENTIALS,
+          message: 'Invalid email or password',
+        }),
+      );
     }
 
     await this.ensureAccountIsUsable(user);
@@ -71,7 +77,12 @@ export class AuthService {
     );
     if (!passwordValid) {
       await this.recordFailedLoginAttempt(user);
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException(
+        JSON.stringify({
+          code: ErrorCode.AUTH_INVALID_CREDENTIALS,
+          message: 'Invalid email or password',
+        }),
+      );
     }
 
     await this.resetLoginAttempts(user);
@@ -104,7 +115,12 @@ export class AuthService {
     const email = registerDto.email.toLowerCase();
     const existing = await this.userRepository.findOne({ where: { email } });
     if (existing) {
-      throw new ConflictException('Email already registered');
+      throw new ConflictException(
+        JSON.stringify({
+          code: ErrorCode.AUTH_EMAIL_ALREADY_REGISTERED,
+          message: 'Email already registered',
+        }),
+      );
     }
 
     const passwordHash = await hashPassword(registerDto.password);
@@ -158,16 +174,31 @@ export class AuthService {
         this.logger.warn(
           `Replay attack detected for user ${payload.email}. Token already consumed.`,
         );
-        throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
+        throw new UnauthorizedException(
+          JSON.stringify({
+            code: ErrorCode.AUTH_INVALID_REFRESH_TOKEN,
+            message: 'Invalid refresh token',
+          }),
+        );
       }
 
       if (!payload.sid) {
-        throw new UnauthorizedException('INVALID_REFRESH_TOKEN');
+        throw new UnauthorizedException(
+          JSON.stringify({
+            code: ErrorCode.AUTH_INVALID_REFRESH_TOKEN,
+            message: 'Invalid refresh token',
+          }),
+        );
       }
 
       const existingSession = await this.getSessionById(payload.sid);
       if (!existingSession || existingSession.revokedAt) {
-        throw new UnauthorizedException('SESSION_REVOKED');
+        throw new UnauthorizedException(
+          JSON.stringify({
+            code: ErrorCode.AUTH_SESSION_REVOKED,
+            message: 'Session has been revoked',
+          }),
+        );
       }
 
       this.logger.log(
@@ -201,7 +232,12 @@ export class AuthService {
         throw error;
       }
       this.logger.error(`Refresh token failed: ${error.message}`);
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      throw new UnauthorizedException(
+        JSON.stringify({
+          code: ErrorCode.AUTH_INVALID_REFRESH_TOKEN,
+          message: 'Invalid or expired refresh token',
+        }),
+      );
     }
   }
 
@@ -270,10 +306,20 @@ export class AuthService {
   async revokeSession(userId: string, sessionId: string) {
     const session = await this.getSessionById(sessionId);
     if (!session) {
-      throw new NotFoundException('Session not found');
+      throw new NotFoundException(
+        JSON.stringify({
+          code: ErrorCode.AUTH_SESSION_NOT_FOUND,
+          message: 'Session not found',
+        }),
+      );
     }
     if (session.userId !== userId) {
-      throw new ForbiddenException('Cannot revoke a session that is not yours');
+      throw new ForbiddenException(
+        JSON.stringify({
+          code: ErrorCode.AUTH_FORBIDDEN,
+          message: 'Cannot revoke a session that is not yours',
+        }),
+      );
     }
 
     await this.redis.hset(
@@ -289,7 +335,12 @@ export class AuthService {
   async manualUnlockByAdmin(userId: string) {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(
+        JSON.stringify({
+          code: ErrorCode.USER_NOT_FOUND,
+          message: 'User not found',
+        }),
+      );
     }
 
     user.failedLoginAttempts = 0;
@@ -306,13 +357,21 @@ export class AuthService {
   ) {
     if (oldPassword === newPassword) {
       throw new BadRequestException(
-        'New password must be different from old password',
+        JSON.stringify({
+          code: ErrorCode.AUTH_PASSWORD_SAME_AS_OLD,
+          message: 'New password must be different from old password',
+        }),
       );
     }
 
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user || !user.passwordHash) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(
+        JSON.stringify({
+          code: ErrorCode.USER_NOT_FOUND,
+          message: 'User not found',
+        }),
+      );
     }
 
     const oldPasswordValid = await verifyPassword(
@@ -320,7 +379,12 @@ export class AuthService {
       user.passwordHash,
     );
     if (!oldPasswordValid) {
-      throw new UnauthorizedException('Old password is incorrect');
+      throw new UnauthorizedException(
+        JSON.stringify({
+          code: ErrorCode.AUTH_OLD_PASSWORD_INCORRECT,
+          message: 'Old password is incorrect',
+        }),
+      );
     }
 
     const recentHashes = [
@@ -330,7 +394,10 @@ export class AuthService {
     for (const hash of recentHashes) {
       if (await verifyPassword(newPassword, hash)) {
         throw new BadRequestException(
-          `Cannot reuse any of your last ${PASSWORD_HISTORY_LIMIT} passwords`,
+          JSON.stringify({
+            code: ErrorCode.AUTH_PASSWORD_REUSE,
+            message: `Cannot reuse any of your last ${PASSWORD_HISTORY_LIMIT} passwords`,
+          }),
         );
       }
     }
@@ -360,7 +427,12 @@ export class AuthService {
       return;
     }
 
-    throw new ForbiddenException('Account is locked. Please try again later');
+    throw new ForbiddenException(
+      JSON.stringify({
+        code: ErrorCode.AUTH_ACCOUNT_LOCKED,
+        message: 'Account is locked. Please try again later',
+      }),
+    );
   }
 
   private async recordFailedLoginAttempt(user: UserEntity) {
