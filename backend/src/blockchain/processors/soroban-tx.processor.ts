@@ -1,12 +1,16 @@
 import { Process, Processor } from '@nestjs/bull';
 import { Logger } from '@nestjs/common';
 
+import { QueueMetricsService } from '../services/queue-metrics.service';
+
 import type { SorobanTxJob } from '../types/soroban-tx.types';
 import type { Job } from 'bull';
 
 @Processor('soroban-tx-queue')
 export class SorobanTxProcessor {
   private readonly logger = new Logger(SorobanTxProcessor.name);
+
+  constructor(private readonly queueMetricsService: QueueMetricsService) {}
 
   /**
    * Main transaction processor.
@@ -47,6 +51,12 @@ export class SorobanTxProcessor {
         `Transaction failed: ${job.id} (attempt ${attemptNumber}/${maxAttempts}) - ${error.message}`,
         error.stack,
       );
+
+      // Track retry if more attempts remain
+      const attemptsRemaining = (maxAttempts ?? 1) - attemptNumber;
+      if (attemptsRemaining > 0) {
+        this.queueMetricsService.incrementRetry();
+      }
 
       // Exponential backoff with jitter is handled by Bull configuration
       // Throwing error triggers automatic retry with backoff

@@ -6,25 +6,61 @@ import {
   UpdateDateColumn,
   OneToMany,
   Index,
+  OneToMany,
+  BaseEntity,
 } from 'typeorm';
 
-import { BloodType } from '../enums/blood-type.enum';
-import { BloodStatus } from '../enums/blood-status.enum';
 import { BloodComponent } from '../enums/blood-component.enum';
+import { BloodStatus } from '../enums/blood-status.enum';
+import { BloodType } from '../enums/blood-type.enum';
+
 import { BloodStatusHistory } from './blood-status-history.entity';
-import { BaseEntity } from '../../common/entities/base.entity';
 
-export interface BloodUnitValidationResult {
-  isValid: boolean;
-  errors: string[];
-}
+@Entity('blood_units')
+@Index(['unitNumber'], { unique: true })
+@Index(['bloodType', 'bankId'])
+export class BloodUnitEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-export interface BloodUnitMetadata {
-  storageTemperature?: number;
-  storageLocation?: string;
-  collectionSite?: string;
-  testResults?: Record<string, unknown>;
-  [key: string]: unknown;
+  @Column({ type: 'varchar', length: 80, unique: true })
+  unitNumber: string;
+
+  @Column({ type: 'bigint', nullable: true })
+  blockchainUnitId?: number;
+
+  @Column({ type: 'varchar', length: 255 })
+  blockchainTransactionHash: string;
+
+  @Column({ type: 'varchar', length: 5 })
+  bloodType: string;
+
+  @Column({ type: 'int' })
+  quantityMl: number;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  donorId?: string;
+
+  @Column({ type: 'varchar', length: 70 })
+  bankId: string;
+
+  @Column({ type: 'timestamp' })
+  expirationDate: Date;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  registeredBy?: string;
+
+  @Column({ type: 'text' })
+  barcodeData: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata?: Record<string, unknown>;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }
 
 @Entity('blood_units')
@@ -86,8 +122,11 @@ export class BloodUnit extends BaseEntity {
   @Column({ name: 'blockchain_tx_hash', type: 'varchar', nullable: true })
   blockchainTxHash: string | null;
 
-  @Column({ name: 'metadata', type: 'jsonb', nullable: true })
-  metadata: BloodUnitMetadata | null;
+  @Column({ name: 'reserved_for', type: 'varchar', nullable: true })
+  reservedFor: string | null;
+
+  @Column({ name: 'reserved_until', type: 'timestamp', nullable: true })
+  reservedUntil: Date | null;
 
   @OneToMany(() => BloodStatusHistory, (history) => history.bloodUnit, {
     cascade: true,

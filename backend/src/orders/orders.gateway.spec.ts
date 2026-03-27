@@ -1,9 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-
+import { OrdersGateway } from './gateways/orders.gateway';
 import { Server, Socket } from 'socket.io';
-
-import { OrdersGateway } from './orders.gateway';
-import { Order, OrderStatus } from './types/order.types';
 
 describe('OrdersGateway', () => {
   let gateway: OrdersGateway;
@@ -40,9 +37,10 @@ describe('OrdersGateway', () => {
   });
 
   describe('afterInit', () => {
-    it('should set up authentication middleware', () => {
+    it('should initialize gateway', () => {
+      const logSpy = jest.spyOn(gateway['logger'], 'log');
       gateway.afterInit(mockServer as Server);
-      expect(mockServer.use).toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith('OrdersGateway WebSocket server initialised');
     });
   });
 
@@ -50,7 +48,7 @@ describe('OrdersGateway', () => {
     it('should log client connection', () => {
       const logSpy = jest.spyOn(gateway['logger'], 'log');
       gateway.handleConnection(mockSocket as Socket);
-      expect(logSpy).toHaveBeenCalledWith(`Client connected: ${mockSocket.id}`);
+      expect(logSpy).toHaveBeenCalledWith(`WebSocket client connected: ${mockSocket.id}`);
     });
   });
 
@@ -58,66 +56,43 @@ describe('OrdersGateway', () => {
     it('should log client disconnection', () => {
       const logSpy = jest.spyOn(gateway['logger'], 'log');
       gateway.handleDisconnect(mockSocket as Socket);
-      expect(logSpy).toHaveBeenCalledWith(
-        `Client disconnected: ${mockSocket.id}`,
-      );
+      expect(logSpy).toHaveBeenCalledWith(`WebSocket client disconnected: ${mockSocket.id}`);
     });
   });
 
-  describe('handleJoinHospital', () => {
-    it('should join client to hospital room', () => {
-      const hospitalId = 'HOSP-001';
-      gateway.handleJoinHospital(mockSocket as Socket, { hospitalId });
-
-      expect(mockSocket.join).toHaveBeenCalledWith(`hospital:${hospitalId}`);
-      expect(mockSocket.emit).toHaveBeenCalledWith('joined', {
-        hospitalId,
-        room: `hospital:${hospitalId}`,
+  describe('emitOrderStatusUpdated', () => {
+    it('should broadcast status update event', () => {
+      gateway.emitOrderStatusUpdated({
+        orderId: 'ORD-001',
+        previousStatus: 'PENDING',
+        newStatus: 'CONFIRMED',
+        eventType: 'ORDER_CONFIRMED',
+        actorId: 'actor-1',
+        timestamp: new Date(),
       });
-    });
 
-    it('should log room join', () => {
-      const logSpy = jest.spyOn(gateway['logger'], 'log');
-      const hospitalId = 'HOSP-001';
-
-      gateway.handleJoinHospital(mockSocket as Socket, { hospitalId });
-
-      expect(logSpy).toHaveBeenCalledWith(
-        `Client ${mockSocket.id} joined room: hospital:${hospitalId}`,
-      );
-    });
-  });
-
-  describe('emitOrderUpdate', () => {
-    it('should broadcast order update to hospital room', () => {
-      const hospitalId = 'HOSP-001';
-      const orderUpdate: Partial<Order> = {
-        id: 'ORD-001',
-        status: 'in_transit' as OrderStatus,
-        updatedAt: new Date(),
-      };
-
-      gateway.emitOrderUpdate(hospitalId, orderUpdate);
-
-      expect(mockServer.to).toHaveBeenCalledWith(`hospital:${hospitalId}`);
       expect(mockServer.emit).toHaveBeenCalledWith(
-        'order:updated',
-        orderUpdate,
+        'order.status.updated',
+        expect.objectContaining({
+          orderId: 'ORD-001',
+          previousStatus: 'PENDING',
+          newStatus: 'CONFIRMED',
+        }),
       );
     });
 
     it('should log broadcast action', () => {
       const logSpy = jest.spyOn(gateway['logger'], 'log');
-      const hospitalId = 'HOSP-001';
-      const orderUpdate: Partial<Order> = {
-        id: 'ORD-001',
-        status: 'delivered' as OrderStatus,
-      };
-
-      gateway.emitOrderUpdate(hospitalId, orderUpdate);
+      gateway.emitOrderStatusUpdated({
+        orderId: 'ORD-001',
+        previousStatus: 'CONFIRMED',
+        newStatus: 'DELIVERED',
+        eventType: 'ORDER_DELIVERED',
+        timestamp: new Date(),
+      });
 
       expect(logSpy).toHaveBeenCalledWith(
-        `Broadcasting order update to room: hospital:${hospitalId}, order: ${orderUpdate.id}`,
+        '[WS] order.status.updated — orderId=ORD-001 CONFIRMED → DELIVERED',
       );
     });
   });

@@ -1,15 +1,24 @@
 /// <reference types="jest" />
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { QueueMetricsService } from '../services/queue-metrics.service';
 import { SorobanTxProcessor } from '../processors/soroban-tx.processor';
 import { SorobanTxJob } from '../types/soroban-tx.types';
+
+const mockQueueMetricsService = {
+  incrementRetry: jest.fn(),
+};
 
 describe('SorobanTxProcessor', () => {
   let processor: SorobanTxProcessor;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SorobanTxProcessor],
+      providers: [
+        SorobanTxProcessor,
+        { provide: QueueMetricsService, useValue: mockQueueMetricsService },
+      ],
     }).compile();
 
     processor = module.get<SorobanTxProcessor>(SorobanTxProcessor);
@@ -54,6 +63,46 @@ describe('SorobanTxProcessor', () => {
       await expect(processor.handleTransaction(mockJob as any)).rejects.toThrow(
         'RPC timeout',
       );
+    });
+
+    it('should call incrementRetry when attempts remain after failure', async () => {
+      const mockJob = {
+        id: 'job-retry',
+        data: {
+          contractMethod: 'register_blood',
+          args: [],
+          idempotencyKey: 'retry-key',
+        } as SorobanTxJob,
+        attemptsMade: 1, // attempt 2 of 5 → 3 remaining
+        opts: { attempts: 5 },
+      };
+
+      jest
+        .spyOn(processor as any, 'executeContractCall')
+        .mockRejectedValueOnce(new Error('RPC timeout'));
+
+      await expect(processor.handleTransaction(mockJob as any)).rejects.toThrow();
+      expect(mockQueueMetricsService.incrementRetry).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not call incrementRetry on last attempt', async () => {
+      const mockJob = {
+        id: 'job-last',
+        data: {
+          contractMethod: 'register_blood',
+          args: [],
+          idempotencyKey: 'last-key',
+        } as SorobanTxJob,
+        attemptsMade: 4, // attempt 5 of 5 → 0 remaining
+        opts: { attempts: 5 },
+      };
+
+      jest
+        .spyOn(processor as any, 'executeContractCall')
+        .mockRejectedValueOnce(new Error('final failure'));
+
+      await expect(processor.handleTransaction(mockJob as any)).rejects.toThrow();
+      expect(mockQueueMetricsService.incrementRetry).not.toHaveBeenCalled();
     });
 
     it('should handle metadata in job data', async () => {

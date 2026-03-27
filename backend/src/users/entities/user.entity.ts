@@ -72,7 +72,7 @@ export class UserEntity extends BaseEntity {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  @ManyToOne(() => OrganizationEntity, (org) => org.users, {
+  @ManyToOne(() => OrganizationEntity, {
     nullable: true,
     onDelete: 'SET NULL',
   })

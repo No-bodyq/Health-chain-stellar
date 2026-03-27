@@ -5,6 +5,7 @@ import {
   BlockchainTxIrrecoverableError,
   CompensationAction,
 } from '../../common/errors/app-errors';
+import { QueueMetricsService } from '../services/queue-metrics.service';
 import { SorobanDlqProcessor } from '../processors/soroban-dlq.processor';
 
 const mockCompensationService = {
@@ -13,6 +14,10 @@ const mockCompensationService = {
     failed: [],
     failureRecordId: 'record-uuid',
   }),
+};
+
+const mockQueueMetricsService = {
+  incrementDlq: jest.fn(),
 };
 
 function makeJob(overrides: Partial<any> = {}): any {
@@ -41,14 +46,20 @@ describe('SorobanDlqProcessor', () => {
       providers: [
         SorobanDlqProcessor,
         { provide: CompensationService, useValue: mockCompensationService },
+        { provide: QueueMetricsService, useValue: mockQueueMetricsService },
       ],
     }).compile();
 
     processor = module.get(SorobanDlqProcessor);
   });
 
-  it('calls compensate with a BlockchainTxIrrecoverableError', async () => {
+  it('increments the DLQ counter via QueueMetricsService', async () => {
     const job = makeJob();
+    await processor.handleDeadLetterJob(job);
+    expect(mockQueueMetricsService.incrementDlq).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls compensate with a BlockchainTxIrrecoverableError', async () => {    const job = makeJob();
     await processor.handleDeadLetterJob(job);
 
     expect(mockCompensationService.compensate).toHaveBeenCalledTimes(1);

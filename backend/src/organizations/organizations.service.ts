@@ -244,6 +244,9 @@ export class OrganizationsService {
   }
 
   private async sendRegistrationReceivedEmail(org: OrganizationEntity) {
+    if (!org.email) {
+      return;
+    }
     const subject = 'We received your organization registration';
     const html = `
       <p>Hello ${org.name},</p>
@@ -254,6 +257,9 @@ export class OrganizationsService {
   }
 
   private async sendApprovedEmail(org: OrganizationEntity) {
+    if (!org.email) {
+      return;
+    }
     const subject = 'Your organization registration was approved';
     const txLine = org.blockchainTxHash
       ? `<p>On-chain reference: <code>${org.blockchainTxHash}</code></p>`
@@ -271,6 +277,9 @@ export class OrganizationsService {
   }
 
   private async sendRejectedEmail(org: OrganizationEntity) {
+    if (!org.email) {
+      return;
+    }
     const subject = 'Update on your organization registration';
     const html = `
       <p>Hello ${org.name},</p>

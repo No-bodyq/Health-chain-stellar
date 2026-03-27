@@ -5,6 +5,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { JobDeduplicationPlugin } from '../plugins/job-deduplication.plugin';
 import { IdempotencyService } from '../services/idempotency.service';
+import { QueueMetricsService } from '../services/queue-metrics.service';
 import { SorobanService } from '../services/soroban.service';
 import { SorobanTxJob } from '../types/soroban-tx.types';
 
@@ -35,6 +36,9 @@ describe('SorobanService', () => {
         ),
       count: jest.fn().mockResolvedValue(5),
       getFailedCount: jest.fn().mockResolvedValue(2),
+      getWaitingCount: jest.fn().mockResolvedValue(4),
+      getActiveCount: jest.fn().mockResolvedValue(1),
+      getDelayedCount: jest.fn().mockResolvedValue(0),
       getJob: jest.fn(),
     };
 
@@ -212,20 +216,38 @@ describe('SorobanService', () => {
     it('should return accurate queue metrics', async () => {
       const metrics = await service.getQueueMetrics();
 
-      expect(metrics).toEqual({
-        queueDepth: 5,
+      expect(metrics).toMatchObject({
+        queueDepth: 5, // waiting(4) + active(1)
         failedJobs: 2,
         dlqCount: 1,
         processingRate: 0,
       });
+      expect(metrics.counters).toBeDefined();
+      expect(metrics.timings).toBeDefined();
     });
 
-    it('should call all queue methods to get metrics', async () => {
-      await service.getQueueMetrics();
+    it('should include counters and timings from QueueMetricsService', async () => {
+      const metrics = await service.getQueueMetrics();
 
-      expect(mockTxQueue.count).toHaveBeenCalled();
-      expect(mockTxQueue.getFailedCount).toHaveBeenCalled();
-      expect(mockDlq.count).toHaveBeenCalled();
+      expect(metrics.counters).toMatchObject({
+        queued: 10,
+        processing: 1,
+        success: 7,
+        failure: 2,
+        retries: 3,
+        dlq: 1,
+      });
+      expect(metrics.timings).toMatchObject({
+        avgMs: 120,
+        minMs: 80,
+        maxMs: 300,
+        samples: 7,
+      });
+    });
+
+    it('should call QueueMetricsService.getDetailedMetrics', async () => {
+      await service.getQueueMetrics();
+      expect(mockQueueMetricsService.getDetailedMetrics).toHaveBeenCalled();
     });
   });
 
@@ -415,6 +437,8 @@ describe('SorobanService', () => {
       expect(metrics).toHaveProperty('failedJobs');
       expect(metrics).toHaveProperty('dlqCount');
       expect(metrics).toHaveProperty('processingRate');
+      expect(metrics).toHaveProperty('counters');
+      expect(metrics).toHaveProperty('timings');
 
       expect(typeof metrics.queueDepth).toBe('number');
       expect(typeof metrics.failedJobs).toBe('number');

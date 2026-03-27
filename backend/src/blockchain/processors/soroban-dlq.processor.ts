@@ -6,6 +6,7 @@ import {
   BlockchainTxIrrecoverableError,
   CompensationAction,
 } from '../../common/errors/app-errors';
+import { QueueMetricsService } from '../services/queue-metrics.service';
 
 import type { SorobanTxJob } from '../types/soroban-tx.types';
 import type { Job } from 'bull';
@@ -21,7 +22,10 @@ import type { Job } from 'bull';
 export class SorobanDlqProcessor {
   private readonly logger = new Logger(SorobanDlqProcessor.name);
 
-  constructor(private readonly compensationService: CompensationService) {}
+  constructor(
+    private readonly compensationService: CompensationService,
+    private readonly queueMetricsService: QueueMetricsService,
+  ) {}
 
   @Process()
   async handleDeadLetterJob(job: Job<SorobanTxJob>): Promise<void> {
@@ -29,6 +33,10 @@ export class SorobanDlqProcessor {
       `[DLQ] Permanent failure for job=${job.id} method=${job.data.contractMethod} attempts=${job.attemptsMade}`,
       { idempotencyKey: job.data.idempotencyKey, metadata: job.data.metadata },
     );
+
+    // Record DLQ counter — the queue event listener also fires, but we call
+    // this here as a belt-and-suspenders guarantee from within the processor.
+    this.queueMetricsService.incrementDlq();
 
     const error = new BlockchainTxIrrecoverableError(
       `Soroban transaction permanently failed after ${job.attemptsMade} attempts: ${job.failedReason ?? 'unknown'}`,

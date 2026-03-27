@@ -30,6 +30,8 @@ export enum Permission {
   REGISTER_BLOOD_UNIT = 'register:bloodunit',
   TRANSFER_CUSTODY = 'transfer:custody',
   LOG_TEMPERATURE = 'log:temperature',
+  UPDATE_BLOOD_STATUS = 'update:blood-status',
+  VIEW_BLOOD_STATUS_HISTORY = 'view:blood-status-history',
 
   // ── Dispatch ─────────────────────────────────────────────────────────
   VIEW_DISPATCH = 'view:dispatch',
@@ -47,12 +49,20 @@ export enum Permission {
   VIEW_NOTIFICATIONS = 'view:notifications',
   MANAGE_NOTIFICATIONS = 'manage:notifications',
 
+  // ── Location History ─────────────────────────────────────────────────
+  RECORD_LOCATION = 'record:location',
+  VIEW_LOCATION_HISTORY = 'view:location-history',
+
   // ── Maps ─────────────────────────────────────────────────────────────
   VIEW_MAPS = 'view:maps',
 
   // ── Blockchain / Soroban ──────────────────────────────────────────────
   MANAGE_SOROBAN = 'manage:soroban',
   VIEW_BLOCKCHAIN = 'view:blockchain',
+
+  // ── Reputation ────────────────────────────────────────────────────────
+  VIEW_REPUTATION = 'view:reputation',
+  MANAGE_REPUTATION = 'manage:reputation',
 
   // ── Admin ─────────────────────────────────────────────────────────────
   ADMIN_ACCESS = 'admin:access',
