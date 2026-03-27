@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -11,7 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
-import { UserRole } from '../../auth/enums/user-role.enum';
+import { PermissionsService } from '../../auth/permissions.service';
 import { NotificationChannel } from '../../notifications/enums/notification-channel.enum';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { CreateOrganizationReviewDto } from '../dto/create-organization-review.dto';
@@ -40,6 +39,7 @@ export class OrganizationReviewsService {
     private readonly reportRepo: Repository<OrganizationReviewReportEntity>,
     @InjectRepository(OrganizationReviewModerationLogEntity)
     private readonly moderationLogRepo: Repository<OrganizationReviewModerationLogEntity>,
+    private readonly permissionsService: PermissionsService,
     @Optional()
     private readonly notificationsService?: NotificationsService,
   ) {}
@@ -209,15 +209,11 @@ export class OrganizationReviewsService {
   async deleteReview(reviewId: string, actorId: string, actorRole?: string) {
     const review = await this.findReviewOrFail(reviewId);
 
-    const isAdmin =
-      actorRole?.toLowerCase() === UserRole.ADMIN ||
-      actorRole?.toLowerCase() === 'admin';
-
-    if (!isAdmin && review.reviewerId !== actorId) {
-      throw new ForbiddenException(
-        'You are not allowed to delete this review.',
-      );
-    }
+    this.permissionsService.assertIsAdminOrSelf(
+      { id: actorId, role: actorRole ?? '' },
+      review.reviewerId,
+      'You are not allowed to delete this review.',
+    );
 
     await this.reviewRepo.remove(review);
     await this.recalculateOrganizationRating(review.organizationId);

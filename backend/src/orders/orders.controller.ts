@@ -146,4 +146,26 @@ export class OrdersController {
     const actorId: string | undefined = req.user?.id;
     return this.ordersService.remove(id, actorId);
   }
+
+  @RequirePermissions(Permission.UPDATE_ORDER)
+  @Patch(':id/raise-dispute')
+  @HttpCode(HttpStatus.OK)
+  raiseDispute(
+    @Param('id') id: string,
+    @Body() dto: RaiseDisputeDto,
+    @Request() req: any,
+  ) {
+    return this.ordersService.raiseDispute(id, dto, req.user?.id);
+  }
+
+  @RequirePermissions(Permission.UPDATE_ORDER)
+  @Patch(':id/resolve-dispute')
+  @HttpCode(HttpStatus.OK)
+  resolveDispute(
+    @Param('id') id: string,
+    @Body() dto: ResolveDisputeDto,
+    @Request() req: any,
+  ) {
+    return this.ordersService.resolveDispute(id, dto, req.user?.id);
+  }
 }

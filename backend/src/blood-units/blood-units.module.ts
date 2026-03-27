@@ -7,6 +7,7 @@ import { BlockchainEvent } from '../soroban/entities/blockchain-event.entity';
 import { BloodUnitTrail } from '../soroban/entities/blood-unit-trail.entity';
 import { SorobanModule } from '../soroban/soroban.module';
 
+import { BloodInventoryQueryService } from './blood-inventory-query.service';
 import { BloodStatusService } from './blood-status.service';
 import { BloodUnitsController } from './blood-units.controller';
 import { BloodUnitsService } from './blood-units.service';
@@ -30,7 +31,11 @@ import { QrVerificationLogEntity } from './entities/qr-verification-log.entity';
     NotificationsModule,
   ],
   controllers: [BloodUnitsController],
-  providers: [BloodUnitsService, BloodStatusService, QrVerificationService],
-  exports: [BloodUnitsService, BloodStatusService, QrVerificationService],
+  providers: [
+    BloodUnitsService,
+    BloodStatusService,
+    BloodInventoryQueryService,
+  ],
+  exports: [BloodUnitsService, BloodStatusService, BloodInventoryQueryService],
 })
 export class BloodUnitsModule {}

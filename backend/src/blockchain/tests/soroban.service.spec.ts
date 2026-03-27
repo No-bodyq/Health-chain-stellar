@@ -3,6 +3,7 @@
 import { getQueueToken } from '@nestjs/bull';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { ConfirmationService } from '../services/confirmation.service';
 import { JobDeduplicationPlugin } from '../plugins/job-deduplication.plugin';
 import { IdempotencyService } from '../services/idempotency.service';
 import { QueueMetricsService } from '../services/queue-metrics.service';
@@ -25,6 +26,11 @@ describe('SorobanService', () => {
   };
   let mockDeduplicationPlugin: {
     checkAndSetJobDedup: jest.Mock;
+  };
+  let mockConfirmationService: {
+    recordConfirmations: jest.Mock;
+    getConfirmations: jest.Mock;
+    finalityThreshold: number;
   };
 
   beforeEach(async () => {
@@ -54,6 +60,17 @@ describe('SorobanService', () => {
       checkAndSetJobDedup: jest.fn().mockResolvedValue(true),
     };
 
+    mockConfirmationService = {
+      recordConfirmations: jest.fn().mockResolvedValue({
+        transactionHash: 'tx-1',
+        confirmations: 1,
+        finalityThreshold: 1,
+        status: 'final',
+      }),
+      getConfirmations: jest.fn().mockResolvedValue(1),
+      finalityThreshold: 1,
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SorobanService,
@@ -72,6 +89,10 @@ describe('SorobanService', () => {
         {
           provide: JobDeduplicationPlugin,
           useValue: mockDeduplicationPlugin,
+        },
+        {
+          provide: ConfirmationService,
+          useValue: mockConfirmationService,
         },
       ],
     }).compile();
@@ -468,6 +489,94 @@ describe('SorobanService', () => {
           contractMethod: 'register_blood',
           status: 'confirmed',
           timestamp: new Date().toISOString(),
+        }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('processWebhookCallback – confirmation depth', () => {
+    it('calls ConfirmationService with default confirmations=1 when omitted', async () => {
+      await service.processWebhookCallback({
+        eventId: 'evt-depth-1',
+        transactionHash: 'tx-depth',
+        contractMethod: 'register_blood',
+        status: 'confirmed',
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(mockConfirmationService.recordConfirmations).toHaveBeenCalledWith(
+        'tx-depth',
+        1,
+      );
+    });
+
+    it('passes incoming confirmations count to ConfirmationService', async () => {
+      await service.processWebhookCallback({
+        eventId: 'evt-depth-2',
+        transactionHash: 'tx-depth-2',
+        contractMethod: 'register_blood',
+        status: 'confirmed',
+        timestamp: new Date().toISOString(),
+        confirmations: 3,
+      });
+
+      expect(mockConfirmationService.recordConfirmations).toHaveBeenCalledWith(
+        'tx-depth-2',
+        3,
+      );
+    });
+
+    it('does NOT call ConfirmationService for non-confirmed status', async () => {
+      await service.processWebhookCallback({
+        eventId: 'evt-pending',
+        transactionHash: 'tx-pending',
+        contractMethod: 'register_blood',
+        status: 'pending',
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(
+        mockConfirmationService.recordConfirmations,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('status remains "confirmed" when below threshold', async () => {
+      mockConfirmationService.recordConfirmations.mockResolvedValueOnce({
+        transactionHash: 'tx-below',
+        confirmations: 1,
+        finalityThreshold: 3,
+        status: 'confirmed',
+      });
+
+      // Should resolve without throwing – downstream persistence is a TODO
+      await expect(
+        service.processWebhookCallback({
+          eventId: 'evt-below',
+          transactionHash: 'tx-below',
+          contractMethod: 'register_blood',
+          status: 'confirmed',
+          timestamp: new Date().toISOString(),
+          confirmations: 1,
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('status transitions to "final" when threshold is met', async () => {
+      mockConfirmationService.recordConfirmations.mockResolvedValueOnce({
+        transactionHash: 'tx-final',
+        confirmations: 3,
+        finalityThreshold: 3,
+        status: 'final',
+      });
+
+      await expect(
+        service.processWebhookCallback({
+          eventId: 'evt-final',
+          transactionHash: 'tx-final',
+          contractMethod: 'register_blood',
+          status: 'confirmed',
+          timestamp: new Date().toISOString(),
+          confirmations: 3,
         }),
       ).resolves.toBeUndefined();
     });

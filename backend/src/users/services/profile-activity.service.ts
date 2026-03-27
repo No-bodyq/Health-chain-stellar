@@ -25,7 +25,14 @@ export class ProfileActivityService {
   ) {}
 
   async logActivity(params: LogActivityParams): Promise<ProfileActivityEntity> {
-    const activity = this.activityRepository.create({
+    return this.logActivityWithManager(this.activityRepository.manager, params);
+  }
+
+  async logActivityWithManager(
+    manager: EntityManager,
+    params: LogActivityParams,
+  ): Promise<ProfileActivityEntity> {
+    const activity = manager.create(ProfileActivityEntity, {
       userId: params.userId,
       activityType: params.activityType,
       description: params.description || null,
@@ -34,7 +41,7 @@ export class ProfileActivityService {
       userAgent: params.userAgent || null,
     });
 
-    return this.activityRepository.save(activity);
+    return manager.save(ProfileActivityEntity, activity);
   }
 
   async getUserActivities(

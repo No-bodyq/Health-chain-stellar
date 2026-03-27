@@ -1,16 +1,12 @@
 import { randomBytes } from 'crypto';
 
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
 
 import { UserRole } from '../auth/enums/user-role.enum';
+import { PermissionsService } from '../auth/permissions.service';
 import { SorobanService } from '../blockchain/services/soroban.service';
 import { CompensationService } from '../common/compensation/compensation.service';
 import {
@@ -40,14 +36,17 @@ export class BloodRequestsService {
     private readonly sorobanService: SorobanService,
     private readonly emailProvider: EmailProvider,
     private readonly compensationService: CompensationService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   private assertHospitalAuthorization(
     user: RequestUser,
     hospitalId: string,
   ): void {
-    if (user.role === UserRole.HOSPITAL && user.id !== hospitalId) {
-      throw new ForbiddenException(
+    if (user.role === UserRole.HOSPITAL) {
+      this.permissionsService.assertIsAdminOrSelf(
+        user,
+        hospitalId,
         'Hospital accounts may only create blood requests where hospitalId matches their user id.',
       );
     }

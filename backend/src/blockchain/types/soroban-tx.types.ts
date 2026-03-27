@@ -16,6 +16,16 @@ export interface SorobanTxResult {
   completedAt?: Date;
 }
 
+/** Finality status emitted after confirmation-depth check. */
+export type TxFinalityStatus = 'confirmed' | 'final';
+
+export interface ConfirmationState {
+  transactionHash: string;
+  confirmations: number;
+  finalityThreshold: number;
+  status: TxFinalityStatus;
+}
+
 export interface QueueMetrics {
   /** Current number of jobs waiting + active in the main queue. */
   queueDepth: number;

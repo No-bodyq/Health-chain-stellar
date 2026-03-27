@@ -34,6 +34,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
 import { REDIS_CLIENT } from './redis/redis.constants';
 import { RedisModule } from './redis/redis.module';
 import { RetentionModule } from './retention/retention.module';
+import { DeliveryProofModule } from './delivery-proof/delivery-proof.module';
 import { RidersModule } from './riders/riders.module';
 import { throttleGetTracker } from './throttler/throttle-tracker.util';
 import { ActivityLoggingInterceptor } from './user-activity/interceptors/activity-logging.interceptor';

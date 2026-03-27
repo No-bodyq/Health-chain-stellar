@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -10,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as QRCode from 'qrcode';
 import { Repository } from 'typeorm';
 
+import { PermissionsService } from '../auth/permissions.service';
 import { NotificationChannel } from '../notifications/enums/notification-channel.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BloodUnitTrail } from '../soroban/entities/blood-unit-trail.entity';
@@ -35,6 +35,7 @@ export class BloodUnitsService {
   constructor(
     private readonly sorobanService: SorobanService,
     private readonly notificationsService: NotificationsService,
+    private readonly permissionsService: PermissionsService,
     @InjectRepository(BloodUnitTrail)
     private readonly trailRepository: Repository<BloodUnitTrail>,
     @InjectRepository(BloodUnitEntity)
@@ -203,24 +204,11 @@ export class BloodUnitsService {
   ) {
     const isAuthorizedBank = await this.sorobanService.isBloodBank(bankId);
     if (!isAuthorizedBank) {
-      throw new ForbiddenException(
-        'Blood bank is not authorized on blockchain',
-      );
+      throw new NotFoundException('Blood bank is not authorized on blockchain');
     }
 
-    if (!user?.role) {
-      return;
-    }
-
-    const normalizedRole = user.role.toLowerCase();
-    const isAdminRole = normalizedRole.includes('admin');
-    const isBloodBankRole =
-      normalizedRole.includes('blood') || normalizedRole.includes('bank');
-
-    if (!isAdminRole && !isBloodBankRole) {
-      throw new ForbiddenException(
-        'Only authorized blood bank accounts can register blood units',
-      );
+    if (user?.role) {
+      this.permissionsService.assertIsBloodBankOrAdmin(user);
     }
   }
 

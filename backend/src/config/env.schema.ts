@@ -135,6 +135,14 @@ export class EnvironmentVariables {
   })
   SOROBAN_NETWORK: string = 'testnet';
 
+  @IsString()
+  @IsNotEmpty({ message: 'BLOCKCHAIN_CALLBACK_SECRET is required' })
+  BLOCKCHAIN_CALLBACK_SECRET: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'ADMIN_KEY is required' })
+  ADMIN_KEY: string;
+
   // ─── Africa's Talking (SMS) ───────────────────────────────────────────────
 
   @IsString()

@@ -6,6 +6,20 @@ import { QueueMetricsService } from '../services/queue-metrics.service';
 import type { SorobanTxJob } from '../types/soroban-tx.types';
 import type { Job } from 'bull';
 
+const RETRY_BASE_DELAY_MS = 1000;
+const RETRY_MAX_DELAY_MS = 30_000;
+const MAX_ATTEMPTS = 5;
+
+/**
+ * Full-jitter exponential backoff: delay = random(0, min(cap, base * 2^attempt))
+ * Prevents thundering herd by spreading retries across a random window.
+ */
+export function computeBackoffDelay(attemptsMade: number): number {
+  const exponential = RETRY_BASE_DELAY_MS * Math.pow(2, attemptsMade);
+  const capped = Math.min(RETRY_MAX_DELAY_MS, exponential);
+  return Math.floor(Math.random() * capped);
+}
+
 @Processor('soroban-tx-queue')
 export class SorobanTxProcessor {
   private readonly logger = new Logger(SorobanTxProcessor.name);
@@ -14,7 +28,7 @@ export class SorobanTxProcessor {
 
   /**
    * Main transaction processor.
-   * Handles Soroban contract calls with exponential backoff retry logic.
+   * Handles Soroban contract calls with full-jitter exponential backoff.
    * Failed jobs are automatically moved to DLQ after max retries.
    *
    * @param job - Transaction job from queue
@@ -23,14 +37,16 @@ export class SorobanTxProcessor {
    */
   @Process()
   async handleTransaction(job: Job<SorobanTxJob>) {
+    const attemptNumber = job.attemptsMade + 1;
+    const maxAttempts = job.opts.attempts ?? MAX_ATTEMPTS;
+
     this.logger.log(
-      `Processing transaction: ${job.id} (attempt ${job.attemptsMade + 1}/${job.opts.attempts})`,
+      `Processing transaction: ${job.id} (attempt ${attemptNumber}/${maxAttempts})`,
     );
 
     try {
       const { contractMethod, args, idempotencyKey, metadata } = job.data;
 
-      // Execute the contract call
       const result = await this.executeContractCall(
         contractMethod,
         args,
@@ -44,22 +60,21 @@ export class SorobanTxProcessor {
 
       return { success: true, transactionHash: result };
     } catch (error) {
-      const attemptNumber = job.attemptsMade + 1;
-      const maxAttempts = job.opts.attempts;
-
       this.logger.error(
         `Transaction failed: ${job.id} (attempt ${attemptNumber}/${maxAttempts}) - ${error.message}`,
         error.stack,
       );
 
-      // Track retry if more attempts remain
-      const attemptsRemaining = (maxAttempts ?? 1) - attemptNumber;
+      const attemptsRemaining = maxAttempts - attemptNumber;
       if (attemptsRemaining > 0) {
         this.queueMetricsService.incrementRetry();
+        const delay = computeBackoffDelay(job.attemptsMade);
+        this.logger.log(
+          `Scheduling retry for ${job.id} in ${delay}ms (${attemptsRemaining} attempts left)`,
+        );
+        await job.update({ ...job.data, _nextDelay: delay });
       }
 
-      // Exponential backoff with jitter is handled by Bull configuration
-      // Throwing error triggers automatic retry with backoff
       throw error;
     }
   }

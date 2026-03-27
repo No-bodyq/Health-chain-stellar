@@ -5,11 +5,13 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   Req,
   HttpCode,
   HttpStatus,
   ParseIntPipe,
   ParseUUIDPipe,
+  ParseEnumPipe,
 } from '@nestjs/common';
 
 import { Request } from 'express';
@@ -17,6 +19,7 @@ import { Request } from 'express';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
 
+import { BloodInventoryQueryService } from './blood-inventory-query.service';
 import { BloodStatusService } from './blood-status.service';
 import { BloodUnitsService } from './blood-units.service';
 import { QrVerificationService } from './qr-verification.service';
@@ -27,18 +30,24 @@ import {
   TransferCustodyDto,
   LogTemperatureDto,
 } from './dto/blood-units.dto';
+import { QueryBloodInventoryDto } from './dto/query-blood-inventory.dto';
 import {
   BulkUpdateBloodStatusDto,
   ReserveBloodUnitDto,
   UpdateBloodStatusDto,
 } from './dto/update-blood-status.dto';
+import { BloodType } from './enums/blood-type.enum';
 
 @Controller('blood-units')
 export class BloodUnitsController {
   constructor(
     private readonly bloodUnitsService: BloodUnitsService,
     private readonly bloodStatusService: BloodStatusService,
+<<<<<<< feature/issues-381-388-389-392
     private readonly qrVerificationService: QrVerificationService,
+=======
+    private readonly inventoryQueryService: BloodInventoryQueryService,
+>>>>>>> main
   ) {}
 
   @RequirePermissions(Permission.REGISTER_BLOOD_UNIT)
@@ -134,6 +143,7 @@ export class BloodUnitsController {
     return this.bloodStatusService.bulkUpdateStatus(dto, request.user);
   }
 
+<<<<<<< feature/issues-381-388-389-392
   @RequirePermissions(Permission.UPDATE_BLOOD_STATUS)
   @Post('verify-qr')
   @HttpCode(HttpStatus.OK)
@@ -145,5 +155,29 @@ export class BloodUnitsController {
   @Get('verify-qr/history/:orderId')
   async getVerificationHistory(@Param('orderId', ParseUUIDPipe) orderId: string) {
     return this.qrVerificationService.getVerificationHistory(orderId);
+=======
+  @RequirePermissions(Permission.REGISTER_BLOOD_UNIT)
+  @Get('inventory')
+  async queryInventory(@Query() dto: QueryBloodInventoryDto) {
+    return this.inventoryQueryService.query(dto);
+  }
+
+  @RequirePermissions(Permission.REGISTER_BLOOD_UNIT)
+  @Get('inventory/statistics')
+  async getInventoryStatistics(@Query('bankId') bankId?: string) {
+    return this.inventoryQueryService.getStatistics(bankId);
+  }
+
+  @RequirePermissions(Permission.REGISTER_BLOOD_UNIT)
+  @Get('inventory/availability')
+  async checkAvailability(
+    @Query('bloodType', new ParseEnumPipe(BloodType)) bloodType: BloodType,
+    @Query('requiredVolumeMl', ParseIntPipe) requiredVolumeMl: number,
+  ) {
+    return this.inventoryQueryService.checkAvailability(
+      bloodType,
+      requiredVolumeMl,
+    );
+>>>>>>> main
   }
 }

@@ -50,6 +50,7 @@ export class RequestStatusService {
     private readonly ordersGateway: OrdersGateway,
     private readonly eventEmitter: EventEmitter2,
     private readonly inventoryService: InventoryService,
+    private readonly permissionsService: PermissionsService,
     @Optional()
     @InjectRepository(BlockchainEvent)
     private readonly blockchainEventRepo?: Repository<BlockchainEvent>,
@@ -62,26 +63,49 @@ export class RequestStatusService {
     dto: UpdateRequestStatusDto,
     actorId?: string,
     actorRole?: string,
+    manager?: EntityManager,
   ): Promise<{ nextStatus: OrderStatus; eventType: OrderEventType }> {
     const nextStatus = this.resolveNextStatus(dto);
     const previousStatus = order.status;
 
-    this.enforceActionRole(dto.action, actorRole);
+    if (actorRole) {
+      this.enforceActionRole(dto.action, {
+        id: actorId ?? '',
+        role: actorRole,
+      });
+    }
     this.stateMachine.transition(previousStatus, nextStatus);
 
     const eventType = STATUS_TO_EVENT_TYPE[nextStatus];
-    await this.eventStore.persistEvent({
-      orderId: order.id,
-      eventType,
-      payload: {
-        previousStatus,
-        newStatus: nextStatus,
-        action: dto.action ?? null,
-        reason: dto.reason ?? null,
-        comment: dto.comment ?? null,
-      },
-      actorId,
-    });
+
+    // Use the provided manager (transactional) or fall back to the default repo manager.
+    if (manager) {
+      await this.eventStore.persistEventWithManager(manager, {
+        orderId: order.id,
+        eventType,
+        payload: {
+          previousStatus,
+          newStatus: nextStatus,
+          action: dto.action ?? null,
+          reason: dto.reason ?? null,
+          comment: dto.comment ?? null,
+        },
+        actorId,
+      });
+    } else {
+      await this.eventStore.persistEvent({
+        orderId: order.id,
+        eventType,
+        payload: {
+          previousStatus,
+          newStatus: nextStatus,
+          action: dto.action ?? null,
+          reason: dto.reason ?? null,
+          comment: dto.comment ?? null,
+        },
+        actorId,
+      });
+    }
 
     if (
       nextStatus === OrderStatus.CANCELLED &&
@@ -266,14 +290,19 @@ export class RequestStatusService {
     nextStatus: OrderStatus,
     actorId?: string,
     reason?: string,
+    manager?: EntityManager,
   ): Promise<void> {
     if (!this.blockchainEventRepo) {
       return;
     }
 
     try {
+      const repo = manager
+        ? manager.getRepository(BlockchainEvent)
+        : this.blockchainEventRepo;
+
       const txHash = `order-status-${order.id}-${Date.now()}`;
-      const entity = this.blockchainEventRepo.create({
+      const entity = repo.create({
         eventType: 'ORDER_STATUS_UPDATED',
         transactionHash: txHash,
         eventData: {
@@ -287,7 +316,7 @@ export class RequestStatusService {
         processed: false,
       });
 
-      await this.blockchainEventRepo.save(entity);
+      await repo.save(entity);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.warn(

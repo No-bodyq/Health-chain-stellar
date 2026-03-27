@@ -6,6 +6,8 @@ import {
   Logger,
 } from '@nestjs/common';
 
+import { ConfigService } from '@nestjs/config';
+
 import { Request } from 'express';
 
 /**
@@ -23,6 +25,8 @@ import { Request } from 'express';
 @Injectable()
 export class AdminGuard implements CanActivate {
   private readonly logger = new Logger(AdminGuard.name);
+
+  constructor(private configService: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
@@ -72,7 +76,7 @@ export class AdminGuard implements CanActivate {
   private checkAdminPermission(request: Request): boolean {
     // Current implementation: Check X-Admin-Key header
     const adminKey = request.headers['x-admin-key'] as string;
-    const expectedKey = process.env.ADMIN_KEY;
+    const expectedKey = this.configService.get<string>('ADMIN_KEY');
 
     if (!expectedKey) {
       this.logger.warn('ADMIN_KEY environment variable not set');
@@ -89,7 +93,7 @@ export class AdminGuard implements CanActivate {
     //
     // const token = authHeader.substring(7);
     // try {
-    //   const decoded = jwt.verify(token, process.env.JWT_PUBLIC_KEY);
+    //   const decoded = jwt.verify(token, this.configService.get('JWT_PUBLIC_KEY'));
     //   return decoded.role === 'admin' && !this.isTokenExpired(decoded);
     // } catch (error) {
     //   this.logger.error('JWT verification failed', error.message);

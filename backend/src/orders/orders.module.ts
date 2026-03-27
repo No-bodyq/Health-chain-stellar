@@ -29,6 +29,7 @@ import { OrderStateMachine } from './state-machine/order-state-machine';
   providers: [
     OrdersService,
     OrderStateMachine,
+    DisputePolicyService,
     OrderEventStoreService,
     RequestStatusService,
     OrdersGateway,

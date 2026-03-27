@@ -9,6 +9,7 @@ import {
   QueueMetrics,
 } from '../types/soroban-tx.types';
 
+import { ConfirmationService } from './confirmation.service';
 import { IdempotencyService } from './idempotency.service';
 
 import type { Queue } from 'bull';
@@ -25,6 +26,7 @@ export class SorobanService {
     @InjectQueue('soroban-dlq') private dlq: Queue,
     private idempotencyService: IdempotencyService,
     private deduplicationPlugin: JobDeduplicationPlugin,
+    private confirmationService: ConfirmationService,
   ) {}
 
   /**
@@ -179,7 +181,8 @@ export class SorobanService {
 
   /**
    * Process an incoming blockchain callback via webhook.
-   * Ensures callback data is securely handled and logged.
+   * Tracks confirmation depth and transitions to "final" only once
+   * the configured SOROBAN_CONFIRMATION_DEPTH threshold is reached.
    *
    * @param callback - Verified callback payload
    */
@@ -190,6 +193,7 @@ export class SorobanService {
     status: 'pending' | 'confirmed' | 'failed';
     timestamp: string;
     details?: string;
+    confirmations?: number;
   }): Promise<void> {
     this.logger.log(
       `Processing blockchain callback event ${callback.eventId}`,
@@ -201,8 +205,22 @@ export class SorobanService {
       },
     );
 
-    // TODO: map callback to persistent state or queue side effects.
-    // e.g., persist to database, update workflow state, or publish domain events.
+    if (callback.status === 'confirmed') {
+      const state = await this.confirmationService.recordConfirmations(
+        callback.transactionHash,
+        callback.confirmations ?? 1,
+      );
+
+      this.logger.log(
+        `Finality check: tx=${callback.transactionHash} confirmations=${state.confirmations}/${state.finalityThreshold} status=${state.status}`,
+        { eventId: callback.eventId },
+      );
+
+      // TODO: persist state.status ('confirmed' | 'final') to database /
+      //       publish domain event so downstream workflows can react.
+    }
+
+    // TODO: handle 'pending' and 'failed' status transitions.
 
     await Promise.resolve();
   }
@@ -222,5 +240,105 @@ export class SorobanService {
     const jitter = Math.random() * 0.1 * exponentialDelay;
     const delay = Math.min(exponentialDelay + jitter, this.MAX_DELAY);
     return Math.floor(delay);
+  }
+
+  /**
+   * Replay failed jobs from DLQ with safety guardrails.
+   * Admin-only operation with batch limits and dry-run support.
+   *
+   * @param options - Replay options (dryRun, batchSize, offset)
+   * @returns Replay result with metrics
+   */
+  async replayDlqJobs(options: {
+    dryRun?: boolean;
+    batchSize?: number;
+    offset?: number;
+  }): Promise<{
+    dryRun: boolean;
+    totalInspected: number;
+    replayable: number;
+    replayed: number;
+    skipped: number;
+    errors: Array<{ jobId: string; reason: string }>;
+  }> {
+    const { dryRun = false, batchSize = 10, offset = 0 } = options;
+
+    this.logger.log(
+      `[DLQ Replay] Starting ${dryRun ? 'DRY RUN' : 'LIVE'} replay: batchSize=${batchSize}, offset=${offset}`,
+    );
+
+    // Fetch failed jobs from DLQ
+    const failedJobs = await this.dlq.getJobs(['failed'], offset, offset + batchSize - 1);
+
+    const result = {
+      dryRun,
+      totalInspected: failedJobs.length,
+      replayable: 0,
+      replayed: 0,
+      skipped: 0,
+      errors: [] as Array<{ jobId: string; reason: string }>,
+    };
+
+    for (const job of failedJobs) {
+      const jobId = String(job.id);
+
+      // Check if job is replayable (has valid data)
+      if (!job.data || !job.data.contractMethod || !job.data.idempotencyKey) {
+        result.skipped++;
+        result.errors.push({
+          jobId,
+          reason: 'Invalid job data - missing required fields',
+        });
+        continue;
+      }
+
+      result.replayable++;
+
+      if (dryRun) {
+        this.logger.log(
+          `[DLQ Replay DRY RUN] Would replay job=${jobId} method=${job.data.contractMethod}`,
+        );
+        continue;
+      }
+
+      try {
+        // Clear old idempotency key to allow resubmission
+        await this.idempotencyService.clearIdempotencyKey(
+          job.data.idempotencyKey,
+        );
+
+        // Resubmit to main queue
+        await this.submitTransaction({
+          ...job.data,
+          metadata: {
+            ...job.data.metadata,
+            replayedFrom: jobId,
+            replayedAt: new Date().toISOString(),
+          },
+        });
+
+        // Remove from DLQ after successful resubmission
+        await job.remove();
+
+        result.replayed++;
+        this.logger.log(
+          `[DLQ Replay] Successfully replayed job=${jobId} method=${job.data.contractMethod}`,
+        );
+      } catch (error) {
+        result.errors.push({
+          jobId,
+          reason: error instanceof Error ? error.message : 'Unknown error',
+        });
+        this.logger.error(
+          `[DLQ Replay] Failed to replay job=${jobId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `[DLQ Replay] Complete: inspected=${result.totalInspected}, replayable=${result.replayable}, replayed=${result.replayed}, skipped=${result.skipped}, errors=${result.errors.length}`,
+    );
+
+    return result;
   }
 }

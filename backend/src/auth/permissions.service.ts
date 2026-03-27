@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import Redis from 'ioredis';
@@ -12,6 +12,28 @@ import { RolePermissionEntity } from './entities/role-permission.entity';
 import { RoleEntity } from './entities/role.entity';
 import { Permission } from './enums/permission.enum';
 import { UserRole } from './enums/user-role.enum';
+
+/** Minimal user context required by permission helpers. */
+export interface UserContext {
+  id: string;
+  role: string;
+}
+
+/** Roles allowed to approve / reject blood requests and orders. */
+const APPROVAL_ROLES = new Set<string>([
+  UserRole.ADMIN,
+  'blood_bank',
+  'blood_bank_staff',
+]);
+
+/** Roles allowed to fulfill / deliver orders. */
+const FULFILLMENT_ROLES = new Set<string>([
+  UserRole.ADMIN,
+  UserRole.RIDER,
+  'dispatcher',
+  'blood_bank',
+  'blood_bank_staff',
+]);
 
 /** Redis TTL for role-permission entries (5 minutes) */
 const CACHE_TTL_SECONDS = 300;
@@ -142,5 +164,84 @@ export class PermissionsService {
     });
 
     return saved;
+  }
+
+  // ── Shared permission helpers ──────────────────────────────────────────────
+
+  /**
+   * Assert that the user holds one of the allowed roles.
+   * Throws ForbiddenException if not.
+   */
+  assertHasRole(
+    user: UserContext,
+    allowedRoles: UserRole[],
+    message?: string,
+  ): void {
+    const normalized = user.role.toLowerCase();
+    const allowed = allowedRoles.map((r) => r.toLowerCase());
+    if (!allowed.includes(normalized)) {
+      throw new ForbiddenException(
+        message ??
+          `Role '${user.role}' is not permitted to perform this action.`,
+      );
+    }
+  }
+
+  /**
+   * Assert that the actor is either an admin or the resource owner.
+   * Throws ForbiddenException otherwise.
+   */
+  assertIsAdminOrSelf(
+    user: UserContext,
+    ownerId: string,
+    message?: string,
+  ): void {
+    const isAdmin = user.role.toLowerCase() === UserRole.ADMIN;
+    if (!isAdmin && user.id !== ownerId) {
+      throw new ForbiddenException(
+        message ?? 'You are not allowed to perform this action.',
+      );
+    }
+  }
+
+  /**
+   * Assert that the actor's role is allowed to approve or reject requests.
+   * Throws ForbiddenException if not.
+   */
+  assertCanApproveRequest(user: UserContext): void {
+    if (!APPROVAL_ROLES.has(user.role.toLowerCase())) {
+      throw new ForbiddenException(
+        `Role '${user.role}' is not allowed to approve or reject requests.`,
+      );
+    }
+  }
+
+  /**
+   * Assert that the actor's role is allowed to fulfill / deliver requests.
+   * Throws ForbiddenException if not.
+   */
+  assertCanFulfillRequest(user: UserContext): void {
+    if (!FULFILLMENT_ROLES.has(user.role.toLowerCase())) {
+      throw new ForbiddenException(
+        `Role '${user.role}' is not allowed to fulfill requests.`,
+      );
+    }
+  }
+
+  /**
+   * Assert that the actor is an admin or a blood-bank operator.
+   * Used to gate blood-unit registration and status mutations.
+   * Throws ForbiddenException if not.
+   */
+  assertIsBloodBankOrAdmin(user: UserContext): void {
+    const normalized = user.role.toLowerCase();
+    const isAdmin = normalized === UserRole.ADMIN;
+    const isBloodBank =
+      normalized.includes('blood') || normalized.includes('bank');
+    if (!isAdmin && !isBloodBank) {
+      throw new ForbiddenException(
+        'Only authorized blood bank accounts can perform this action.',
+      );
+    }
   }
 }

@@ -29,4 +29,13 @@ export class BlockchainCallbackDto {
   @IsOptional()
   @IsString()
   details?: string;
+
+  /**
+   * Number of block confirmations reported by the blockchain provider.
+   * When omitted, defaults to 1 (the callback itself counts as one confirmation).
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  confirmations?: number;
 }

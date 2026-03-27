@@ -26,6 +26,11 @@ import { InventoryService } from '../inventory/inventory.service';
 
 import { OrderQueryParamsDto } from './dto/order-query-params.dto';
 import { OrdersResponseDto } from './dto/orders-response.dto';
+import { RaiseDisputeDto } from './dto/raise-dispute.dto';
+import {
+  ResolveDisputeDto,
+  DisputeResolution,
+} from './dto/resolve-dispute.dto';
 import { UpdateRequestStatusDto } from './dto/update-request-status.dto';
 import { OrderEventEntity } from './entities/order-event.entity';
 import { OrderEntity } from './entities/order.entity';
@@ -46,12 +51,15 @@ export class OrdersService {
   private readonly orders: Order[] = [];
 
   constructor(
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     @InjectRepository(OrderEntity)
     private readonly orderRepo: Repository<OrderEntity>,
     private readonly stateMachine: OrderStateMachine,
     private readonly eventStore: OrderEventStoreService,
     private readonly eventEmitter: EventEmitter2,
     private readonly inventoryService: InventoryService,
+    private readonly sorobanService: SorobanService,
     private readonly requestStatusService: RequestStatusService,
     private readonly feePolicyService: FeePolicyService,
   ) { }
@@ -341,7 +349,12 @@ export class OrdersService {
     }
 
     try {
-      const updated = await this.orderRepo.save(order);
+      const updated = await this.dataSource.transaction(async (manager) => {
+        await this.requestStatusService.applyStatusUpdate(
+          order, dto, actorId, actorRole, manager,
+        );
+        return manager.save(OrderEntity, order);
+      });
       return { message: 'Order status updated successfully', data: updated };
     } catch (err) {
       if (err instanceof OptimisticLockVersionMismatchError) {
@@ -360,12 +373,16 @@ export class OrdersService {
    */
   async remove(id: string, actorId?: string) {
     const order = await this.findOrderOrFail(id);
-    await this.requestStatusService.applyStatusUpdate(
-      order,
-      { action: RequestStatusAction.CANCEL },
-      actorId,
-    );
-    await this.orderRepo.save(order);
+    await this.dataSource.transaction(async (manager) => {
+      await this.requestStatusService.applyStatusUpdate(
+        order,
+        { action: RequestStatusAction.CANCEL },
+        actorId,
+        undefined,
+        manager,
+      );
+      await manager.save(OrderEntity, order);
+    });
     return { message: 'Order cancelled successfully', data: { id } };
   }
 
