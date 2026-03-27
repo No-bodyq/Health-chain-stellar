@@ -167,7 +167,7 @@ export class RequestQueryService {
     const fulfilledWithTime = requests.filter(
       (r) =>
         r.status === BloodRequestStatus.FULFILLED &&
-        r.requiredBy &&
+        r.requiredByTimestamp &&
         r.updatedAt,
     );
 
@@ -183,7 +183,7 @@ export class RequestQueryService {
 
     // Calculate SLA compliance rate
     const onTimeFulfillments = fulfilledWithTime.filter(
-      (r) => r.updatedAt <= r.requiredBy,
+      (r) => r.updatedAt.getTime() <= r.requiredByTimestamp,
     ).length;
     const slaComplianceRate =
       fulfilledWithTime.length > 0
@@ -255,11 +255,11 @@ export class RequestQueryService {
     );
 
     const onTimeFulfillments = fulfilledRequests.filter(
-      (r) => r.requiredBy && r.updatedAt <= r.requiredBy,
+      (r) => r.requiredByTimestamp && r.updatedAt.getTime() <= r.requiredByTimestamp,
     ).length;
 
     const lateFulfillments = fulfilledRequests.filter(
-      (r) => r.requiredBy && r.updatedAt > r.requiredBy,
+      (r) => r.requiredByTimestamp && r.updatedAt.getTime() > r.requiredByTimestamp,
     ).length;
 
     const complianceRate =
@@ -269,13 +269,13 @@ export class RequestQueryService {
 
     // Calculate average delay for late fulfillments
     const lateRequests = fulfilledRequests.filter(
-      (r) => r.requiredBy && r.updatedAt > r.requiredBy,
+      (r) => r.requiredByTimestamp && r.updatedAt.getTime() > r.requiredByTimestamp,
     );
 
     let averageDelayHours = 0;
     if (lateRequests.length > 0) {
       const totalDelay = lateRequests.reduce((sum, r) => {
-        const delay = r.updatedAt.getTime() - r.requiredBy.getTime();
+        const delay = r.updatedAt.getTime() - r.requiredByTimestamp;
         return sum + delay;
       }, 0);
       averageDelayHours = totalDelay / lateRequests.length / (1000 * 60 * 60);
@@ -326,7 +326,7 @@ export class RequestQueryService {
         request.requestNumber,
         request.hospitalId,
         request.status,
-        request.requiredBy?.toISOString() || '',
+        request.requiredByTimestamp ? new Date(request.requiredByTimestamp).toISOString() : '',
         request.createdAt.toISOString(),
         request.updatedAt.toISOString(),
         bloodTypes,
