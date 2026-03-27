@@ -1,6 +1,7 @@
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { AppErrorFilter } from './common/filters/irrecoverable-error.filter';
@@ -51,11 +52,28 @@ async function bootstrap() {
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
   app.setGlobalPrefix(apiPrefix);
 
+  // Swagger/OpenAPI configuration
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Health-chain-stellar API')
+    .setDescription(
+      'HealthDonor Protocol - Transparent health donations on Stellar Soroban',
+    )
+    .setVersion('1.0.0')
+    .addBearerAuth()
+    .addTag('Authentication', 'User authentication and session management')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document);
+
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port);
 
   logger.log(
     `Application is running on: http://localhost:${port}/${apiPrefix}`,
+  );
+  logger.log(
+    `Swagger documentation available at: http://localhost:${port}/docs`,
   );
   logger.log(
     `Environment: ${configService.get<string>('NODE_ENV', 'development')}`,
