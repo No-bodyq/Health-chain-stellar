@@ -1,14 +1,20 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
 
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
+import { BloodComponent } from '../blood-units/enums/blood-component.enum';
 
 import { BloodRequestsService } from './blood-requests.service';
 import { CreateBloodRequestDto } from './dto/create-blood-request.dto';
+import { GetAvailabilityRequestDto, GetAvailabilityResponseDto } from './dto/get-availability.dto';
+import { BloodBankAvailabilityService } from './services/blood-bank-availability.service';
 
 @Controller('blood-requests')
 export class BloodRequestsController {
-  constructor(private readonly bloodRequestsService: BloodRequestsService) {}
+  constructor(
+    private readonly bloodRequestsService: BloodRequestsService,
+    private readonly availabilityService: BloodBankAvailabilityService,
+  ) {}
 
   @RequirePermissions(Permission.CREATE_ORDER)
   @Post()
@@ -17,5 +23,25 @@ export class BloodRequestsController {
     @Req() req: { user: { id: string; role: string; email: string } },
   ) {
     return this.bloodRequestsService.create(dto, req.user);
+  }
+
+  /**
+   * GET /blood-requests/availability
+   * Find nearby blood banks with requested blood type/component
+   * Returns ranked list by confidence score (stock, ETA, reliability)
+   */
+  @Get('availability')
+  async getAvailability(
+    @Query() query: GetAvailabilityRequestDto,
+  ): Promise<GetAvailabilityResponseDto> {
+    return this.availabilityService.findNearbyBanksWithStock(
+      query.bloodType,
+      query.component || BloodComponent.WHOLE_BLOOD,
+      query.latitude,
+      query.longitude,
+      query.deliveryAddress,
+      query.maxDistanceKm || 100,
+      query.maxResultsCount || 10,
+    );
   }
 }

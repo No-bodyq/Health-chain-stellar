@@ -113,22 +113,29 @@ export class BloodRequestsService {
     try {
       for (const item of dto.items) {
         const bloodType = item.bloodType.trim();
+        const quantity = item.quantityMl ?? item.quantity;
+        const bloodBankId = item.bloodBankId || dto.hospitalId; // Fallback to hospital if no specific bank
+
+        if (!quantity) {
+          throw new BadRequestException('Item quantity must be specified as quantityMl or quantity');
+        }
+
         await this.inventoryService.reserveStockOrThrow(
-          item.bloodBankId,
+          bloodBankId,
           bloodType,
-          item.quantity,
+          quantity,
         );
         reserved.push({
-          bloodBankId: item.bloodBankId,
+          bloodBankId,
           bloodType,
-          quantity: item.quantity,
+          quantity,
         });
       }
 
       const chainPayload = dto.items.map((i) => ({
-        bloodBankId: i.bloodBankId,
+        bloodBankId: i.bloodBankId || dto.hospitalId,
         bloodType: i.bloodType.trim(),
-        quantity: i.quantity,
+        quantity: i.quantityMl ?? i.quantity,
       }));
 
       let transactionHash: string;

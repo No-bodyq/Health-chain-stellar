@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard } from '@nestjs/throttler';
 
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 
@@ -35,6 +37,9 @@ import { TransparencyModule } from './transparency/transparency.module';
 
 import type Redis from 'ioredis';
 
+// Placeholder for activity logging interceptor (if exists, else will need to be implemented)
+// import { ActivityLoggingInterceptor } from './common/interceptors/activity-logging.interceptor';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -53,23 +58,26 @@ import type Redis from 'ioredis';
       }),
       inject: [ConfigService],
     }),
-    SorobanModule,
-    ApprovalModule,
-    DonationModule,
-    OrdersModule,
     UsersModule,
     AuthModule,
     InventoryModule,
     NotificationsModule,
     UserActivityModule,
     EventsModule,
-    RetentionModule,
     TrackingModule,
-    FeePolicyModule,
     AnomalyModule,
     BatchImportModule,
     WorkflowModule,
-  ]
+    BloodRequestsModule,
+    BloodUnitsModule,
+    BlockchainModule,
+    DispatchModule,
+    DonorImpactModule,
+    LocationHistoryModule,
+    HospitalsModule,
+    MapsModule,
+    TransparencyModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,
@@ -81,7 +89,7 @@ import type Redis from 'ioredis';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     /** Permission enforcement applied globally; use @RequirePermissions() to specify */
     { provide: APP_GUARD, useClass: PermissionsGuard },
-    { provide: APP_INTERCEPTOR, useClass: ActivityLoggingInterceptor },
+    // { provide: APP_INTERCEPTOR, useClass: ActivityLoggingInterceptor },
     CorrelationIdService,
   ],
 })

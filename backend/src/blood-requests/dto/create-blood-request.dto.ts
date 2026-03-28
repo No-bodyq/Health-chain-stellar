@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsDateString,
+  IsEnum,
   IsOptional,
   IsString,
   MaxLength,
@@ -10,6 +11,7 @@ import {
 } from 'class-validator';
 
 import { CreateRequestItemDto } from './create-request-item.dto';
+import { RequestUrgency } from '../entities/blood-request.entity';
 
 export class CreateBloodRequestDto {
   @IsString()
@@ -25,6 +27,10 @@ export class CreateBloodRequestDto {
   @Type(() => CreateRequestItemDto)
   @ArrayMinSize(1)
   items: CreateRequestItemDto[];
+
+  @IsEnum(RequestUrgency)
+  @IsOptional()
+  urgency?: RequestUrgency;
 
   @IsOptional()
   @IsString()

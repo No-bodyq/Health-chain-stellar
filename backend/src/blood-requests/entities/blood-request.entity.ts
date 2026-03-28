@@ -8,18 +8,20 @@ import {
   Index,
 } from 'typeorm';
 
-import { BloodComponent } from '../../blood-units/enums/blood-component.enum';
-import { BloodType } from '../../blood-units/enums/blood-type.enum';
 import { BloodRequestStatus } from '../enums/blood-request-status.enum';
 
 import { BloodRequestItemEntity } from './blood-request-item.entity';
+import { BloodRequestReservationEntity } from './blood-request-reservation.entity';
 
-export enum Urgency {
+export enum RequestUrgency {
   CRITICAL = 'CRITICAL', // < 2 hours
   URGENT = 'URGENT', // 2-6 hours
   ROUTINE = 'ROUTINE', // 6-24 hours
   SCHEDULED = 'SCHEDULED', // > 24 hours
 }
+
+// Backward compatibility export
+export const Urgency = RequestUrgency;
 
 export interface BloodRequestValidationResult {
   isValid: boolean;
@@ -27,17 +29,19 @@ export interface BloodRequestValidationResult {
 }
 
 export interface FulfillmentProgress {
-  requestedMl: number;
-  fulfilledMl: number;
-  remainingMl: number;
+  totalRequestedMl: number;
+  totalFulfilledMl: number;
+  totalRemainingMl: number;
   percentage: number;
+  itemsCount: number;
+  itemsFulfilledCount: number;
 }
 
 @Entity('blood_requests')
 @Index('idx_blood_requests_hospital', ['hospitalId'])
 @Index('idx_blood_requests_status', ['status'])
 @Index('idx_blood_requests_urgency', ['urgency'])
-@Index('idx_blood_requests_required_by', ['requiredBy'])
+@Index('idx_blood_requests_required_by', ['requiredByTimestamp'])
 export class BloodRequestEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -49,28 +53,11 @@ export class BloodRequestEntity {
   hospitalId: string;
 
   @Column({
-    name: 'blood_type',
     type: 'enum',
-    enum: BloodType,
+    enum: RequestUrgency,
+    default: RequestUrgency.ROUTINE,
   })
-  bloodType: BloodType;
-
-  @Column({
-    name: 'component',
-    type: 'enum',
-    enum: BloodComponent,
-  })
-  component: BloodComponent;
-
-  @Column({ name: 'quantity_ml', type: 'int' })
-  quantityMl: number;
-
-  @Column({
-    type: 'enum',
-    enum: Urgency,
-    default: Urgency.ROUTINE,
-  })
-  urgency: Urgency;
+  urgency: RequestUrgency;
 
   @Column({ name: 'created_timestamp', type: 'bigint' })
   createdTimestamp: number;
@@ -84,12 +71,6 @@ export class BloodRequestEntity {
     default: BloodRequestStatus.PENDING,
   })
   status: BloodRequestStatus;
-
-  @Column({ name: 'assigned_units', type: 'simple-array', nullable: true })
-  assignedUnits: string[] | null;
-
-  @Column({ name: 'fulfilled_quantity_ml', type: 'int', default: 0 })
-  fulfilledQuantityMl: number;
 
   @Column({ name: 'delivery_address', type: 'text', nullable: true })
   deliveryAddress: string | null;
@@ -115,8 +96,14 @@ export class BloodRequestEntity {
 
   @OneToMany(() => BloodRequestItemEntity, (item) => item.request, {
     cascade: true,
+    eager: true,
   })
   items: BloodRequestItemEntity[];
+
+  @OneToMany(() => BloodRequestReservationEntity, (res) => res.request, {
+    cascade: true,
+  })
+  reservations: BloodRequestReservationEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -125,10 +112,51 @@ export class BloodRequestEntity {
   updatedAt: Date;
 
   /**
-   * Check if the request is fulfilled
+   * Get total requested quantity across all items
+   */
+  getTotalRequestedMl(): number {
+    return this.items?.reduce((sum, item) => sum + item.quantityMl, 0) ?? 0;
+  }
+
+  /**
+   * Get total fulfilled quantity across all items
+   */
+  getTotalFulfilledMl(): number {
+    return this.items?.reduce((sum, item) => sum + item.fulfilledQuantityMl, 0) ?? 0;
+  }
+
+  /**
+   * Get total remaining to fulfill
+   */
+  getTotalRemainingMl(): number {
+    return this.getTotalRequestedMl() - this.getTotalFulfilledMl();
+  }
+
+  /**
+   * Check if the request is completely fulfilled
    */
   isFulfilled(): boolean {
-    return this.fulfilledQuantityMl >= this.quantityMl;
+    if (!this.items || this.items.length === 0) return false;
+    return this.items.every((item) => item.isFulfilled());
+  }
+
+  /**
+   * Get fulfillment progress across all items
+   */
+  getProgress(): FulfillmentProgress {
+    const totalRequestedMl = this.getTotalRequestedMl();
+    const totalFulfilledMl = this.getTotalFulfilledMl();
+    const percentage = totalRequestedMl > 0 ? (totalFulfilledMl / totalRequestedMl) * 100 : 0;
+    const itemsFulfilledCount = this.items?.filter((i) => i.isFulfilled()).length ?? 0;
+
+    return {
+      totalRequestedMl,
+      totalFulfilledMl,
+      totalRemainingMl: totalRequestedMl - totalFulfilledMl,
+      percentage,
+      itemsCount: this.items?.length ?? 0,
+      itemsFulfilledCount,
+    };
   }
 
   /**

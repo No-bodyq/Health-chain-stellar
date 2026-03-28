@@ -274,4 +274,15 @@ export class InventoryService {
       .where('id = :id', { id: stock.id })
       .execute();
   }
+
+  /**
+   * Release stock back to inventory (backward compatibility wrapper)
+   */
+  async releaseStockByBankAndType(
+    bloodBankId: string,
+    bloodType: string,
+    quantity: number,
+  ): Promise<void> {
+    return this.restoreStockOrThrow(bloodBankId, bloodType, quantity);
+  }
 }
