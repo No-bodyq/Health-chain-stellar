@@ -10,6 +10,7 @@ import * as QRCode from 'qrcode';
 import { Repository } from 'typeorm';
 
 import { PermissionsService } from '../auth/permissions.service';
+import { DonorEligibilityService } from '../donor-eligibility/donor-eligibility.service';
 import { NotificationChannel } from '../notifications/enums/notification-channel.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BloodUnitTrail } from '../soroban/entities/blood-unit-trail.entity';
@@ -36,6 +37,7 @@ export class BloodUnitsService {
     private readonly sorobanService: SorobanService,
     private readonly notificationsService: NotificationsService,
     private readonly permissionsService: PermissionsService,
+    private readonly donorEligibilityService: DonorEligibilityService,
     @InjectRepository(BloodUnitTrail)
     private readonly trailRepository: Repository<BloodUnitTrail>,
     @InjectRepository(BloodUnitEntity)
@@ -48,6 +50,11 @@ export class BloodUnitsService {
   ) {
     this.validateExpirationDate(dto.expirationDate);
     await this.validateBloodBankAuthorization(dto.bankId, user);
+
+    // Block registration if donor is not eligible
+    if (dto.donorId) {
+      await this.donorEligibilityService.assertEligible(dto.donorId);
+    }
 
     const unitNumber = await this.generateUniqueUnitNumber(dto.bloodType);
     const expirationTimestamp = Math.floor(

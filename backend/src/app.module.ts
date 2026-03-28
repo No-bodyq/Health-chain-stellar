@@ -16,6 +16,9 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { BloodRequestsModule } from './blood-requests/blood-requests.module';
 import { BloodUnitsModule } from './blood-units/blood-units.module';
+import { ColdChainModule } from './cold-chain/cold-chain.module';
+import { DisputesModule } from './disputes/disputes.module';
+import { DonorEligibilityModule } from './donor-eligibility/donor-eligibility.module';
 import { EventsModule } from './events/events.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { CorrelationIdService } from './common/middleware/correlation-id.service';
@@ -69,6 +72,9 @@ import type Redis from 'ioredis';
     AnomalyModule,
     BatchImportModule,
     WorkflowModule,
+    ColdChainModule,
+    DonorEligibilityModule,
+    DisputesModule,
   ]
   controllers: [AppController],
   providers: [

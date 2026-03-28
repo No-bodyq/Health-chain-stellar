@@ -6,6 +6,7 @@ import { OrderEntity } from '../orders/entities/order.entity';
 import { BlockchainEvent } from '../soroban/entities/blockchain-event.entity';
 import { BloodUnitTrail } from '../soroban/entities/blood-unit-trail.entity';
 import { SorobanModule } from '../soroban/soroban.module';
+import { DonorEligibilityModule } from '../donor-eligibility/donor-eligibility.module';
 
 import { BloodInventoryQueryService } from './blood-inventory-query.service';
 import { BloodStatusService } from './blood-status.service';
@@ -29,6 +30,7 @@ import { QrVerificationLogEntity } from './entities/qr-verification-log.entity';
     ]),
     SorobanModule,
     NotificationsModule,
+    DonorEligibilityModule,
   ],
   controllers: [BloodUnitsController],
   providers: [
