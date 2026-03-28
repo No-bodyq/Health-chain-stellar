@@ -10,6 +10,9 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AnomalyModule } from './anomaly/anomaly.module';
+import { BatchImportModule } from './batch-import/batch-import.module';
+import { WorkflowModule } from './workflow/workflow.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
@@ -128,6 +131,9 @@ import type Redis from 'ioredis';
     TransparencyModule,
   ],
     FeePolicyModule,
+    AnomalyModule,
+    BatchImportModule,
+    WorkflowModule,
   ]
   controllers: [AppController],
   providers: [
