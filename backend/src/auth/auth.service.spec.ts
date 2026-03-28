@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/require-await */
 import {
   BadRequestException,
   ForbiddenException,
@@ -12,7 +16,7 @@ import Redis from 'ioredis';
 import { Repository } from 'typeorm';
 
 import { REDIS_CLIENT } from '../redis/redis.constants';
-import { ActivityType } from '../user-activity/enums/activity-type.enum';
+import { SecurityEventLoggerService, SecurityEventType } from '../user-activity/security-event-logger.service';
 import { UserActivityService } from '../user-activity/user-activity.service';
 import { UserEntity } from '../users/entities/user.entity';
 
@@ -74,6 +78,10 @@ describe('AuthService', () => {
     logActivity: jest.fn().mockResolvedValue({}),
   };
 
+  const mockSecurityEventLoggerService = {
+    logEvent: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     userRepository = {
       findOne: jest.fn(),
@@ -111,6 +119,10 @@ describe('AuthService', () => {
         {
           provide: UserActivityService,
           useValue: mockUserActivityService,
+        },
+        {
+          provide: SecurityEventLoggerService,
+          useValue: mockSecurityEventLoggerService,
         },
       ],
     }).compile();
@@ -155,6 +167,38 @@ describe('AuthService', () => {
         refresh_token: 'refresh-token',
       });
       expect(mockJwtService.sign).toHaveBeenCalledTimes(2);
+      expect(mockSecurityEventLoggerService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: SecurityEventType.AUTH_LOGIN_SUCCESS,
+          userId: 'user-1',
+          email: 'test@example.com',
+        }),
+      );
+    });
+
+    it('emits AUTH_LOGIN_FAILED on invalid password', async () => {
+      const user = {
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'donor',
+        passwordHash: await hashPassword('password'),
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      } as UserEntity;
+      (userRepository.findOne as jest.Mock).mockResolvedValue(user);
+      (userRepository.save as jest.Mock).mockResolvedValue(user);
+
+      await expect(
+        service.login({ email: 'test@example.com', password: 'wrong-password' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(mockSecurityEventLoggerService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: SecurityEventType.AUTH_LOGIN_FAILED,
+          userId: 'user-1',
+          email: 'test@example.com',
+        }),
+      );
     });
 
     it('locks account after MAX_FAILED_LOGIN_ATTEMPTS failed attempts', async () => {
@@ -177,6 +221,10 @@ describe('AuthService', () => {
             useValue: mockAuthSessionRepository,
           },
           { provide: UserActivityService, useValue: mockUserActivityService },
+          {
+            provide: SecurityEventLoggerService,
+            useValue: mockSecurityEventLoggerService,
+          },
         ],
       }).compile();
       const serviceCustom = moduleCustom.get<AuthService>(AuthService);
@@ -224,6 +272,10 @@ describe('AuthService', () => {
             useValue: mockAuthSessionRepository,
           },
           { provide: UserActivityService, useValue: mockUserActivityService },
+          {
+            provide: SecurityEventLoggerService,
+            useValue: mockSecurityEventLoggerService,
+          },
         ],
       }).compile();
       const serviceCustom = moduleCustom.get<AuthService>(AuthService);
@@ -417,6 +469,15 @@ describe('AuthService', () => {
       expect(mockAuthSessionRepository.revokeSession).toHaveBeenCalledWith(
         'session-replay',
         expect.stringContaining('REFRESH_TOKEN_REUSE'),
+      );
+
+      expect(mockSecurityEventLoggerService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: SecurityEventType.AUTH_REFRESH_TOKEN_REPLAY,
+          userId: 'user-123',
+          sessionId: 'session-replay',
+          email: 'test@example.com',
+        }),
       );
     });
 
@@ -619,9 +680,9 @@ describe('AuthService', () => {
         service.login({ email: 'test@example.com', password: 'Wrong1!' }),
       ).rejects.toThrow();
 
-      expect(mockUserActivityService.logActivity).toHaveBeenCalledWith(
+      expect(mockSecurityEventLoggerService.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
-          activityType: ActivityType.AUTH_ACCOUNT_LOCKED,
+          eventType: SecurityEventType.AUTH_ACCOUNT_LOCKED,
           userId: 'user-1',
           metadata: expect.objectContaining({ email: 'test@example.com' }),
         }),
@@ -645,9 +706,9 @@ describe('AuthService', () => {
 
       await service.login({ email: 'test@example.com', password: 'Correct1!' });
 
-      expect(mockUserActivityService.logActivity).toHaveBeenCalledWith(
+      expect(mockSecurityEventLoggerService.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
-          activityType: ActivityType.AUTH_ACCOUNT_AUTO_UNLOCKED,
+          eventType: SecurityEventType.AUTH_ACCOUNT_AUTO_UNLOCKED,
           userId: 'user-1',
           metadata: expect.objectContaining({ email: 'test@example.com' }),
         }),
@@ -669,9 +730,9 @@ describe('AuthService', () => {
 
       await service.manualUnlockByAdmin('user-1');
 
-      expect(mockUserActivityService.logActivity).toHaveBeenCalledWith(
+      expect(mockSecurityEventLoggerService.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
-          activityType: ActivityType.AUTH_ACCOUNT_MANUALLY_UNLOCKED,
+          eventType: SecurityEventType.AUTH_ACCOUNT_MANUALLY_UNLOCKED,
           userId: 'user-1',
           metadata: expect.objectContaining({
             email: 'test@example.com',
@@ -709,6 +770,9 @@ describe('AuthService', () => {
           { provide: JwtKeyService, useValue: mockJwtKeyService },
           { provide: REDIS_CLIENT, useValue: mockRedis },
           { provide: getRepositoryToken(UserEntity), useValue: userRepository },
+          { provide: AuthSessionRepository, useValue: mockAuthSessionRepository },
+          { provide: UserActivityService, useValue: mockUserActivityService },
+          { provide: SecurityEventLoggerService, useValue: mockSecurityEventLoggerService },
         ],
       }).compile();
       return mod.get<AuthService>(AuthService);
@@ -864,6 +928,9 @@ describe('AuthService', () => {
           { provide: JwtKeyService, useValue: mockJwtKeyService },
           { provide: REDIS_CLIENT, useValue: mockRedis },
           { provide: getRepositoryToken(UserEntity), useValue: userRepository },
+          { provide: AuthSessionRepository, useValue: mockAuthSessionRepository },
+          { provide: UserActivityService, useValue: mockUserActivityService },
+          { provide: SecurityEventLoggerService, useValue: mockSecurityEventLoggerService },
         ],
       }).compile();
       return mod.get<AuthService>(AuthService);

@@ -21,7 +21,7 @@ import { ErrorCode } from '../common/errors/error-codes.enum';
 import { AuthSessionFallbackStore } from '../redis/auth-session-fallback.store';
 import { RedisCircuitBreaker } from '../redis/redis-circuit-breaker';
 import { REDIS_CLIENT } from '../redis/redis.constants';
-import { ActivityType } from '../user-activity/enums/activity-type.enum';
+import { SecurityEventLoggerService, SecurityEventType } from '../user-activity/security-event-logger.service';
 import { UserActivityService } from '../user-activity/user-activity.service';
 import { UserEntity } from '../users/entities/user.entity';
 
@@ -59,6 +59,7 @@ export class AuthService {
     private readonly userRepository: Repository<UserEntity>,
     private readonly authSessionRepository: AuthSessionRepository,
     private readonly userActivityService: UserActivityService,
+    private readonly securityEventLogger: SecurityEventLoggerService,
   ) {
     this.circuitBreaker = new RedisCircuitBreaker();
     this.fallbackStore = new AuthSessionFallbackStore();
@@ -88,6 +89,17 @@ export class AuthService {
       where: { email: loginDto.email.toLowerCase() },
     });
     if (!user || !user.passwordHash) {
+      await this.securityEventLogger
+        .logEvent({
+          eventType: SecurityEventType.AUTH_LOGIN_FAILED,
+          userId: user?.id ?? null,
+          email: loginDto.email.toLowerCase(),
+          description: 'User login failed: user not found or no password',
+          metadata: { reason: 'AUTH_INVALID_CREDENTIALS' },
+          ipAddress: meta.ipAddress ?? null,
+          userAgent: meta.userAgent ?? null,
+        })
+        .catch(() => undefined);
       await dummyVerify(loginDto.password);
       throw new UnauthorizedException(
         JSON.stringify({
@@ -105,6 +117,17 @@ export class AuthService {
     );
     if (!passwordValid) {
       await this.recordFailedLoginAttempt(user);
+      await this.securityEventLogger
+        .logEvent({
+          eventType: SecurityEventType.AUTH_LOGIN_FAILED,
+          userId: user.id,
+          email: user.email,
+          description: 'User login failed: invalid credentials',
+          metadata: { reason: 'AUTH_INVALID_CREDENTIALS' },
+          ipAddress: meta.ipAddress ?? null,
+          userAgent: meta.userAgent ?? null,
+        })
+        .catch(() => undefined);
       throw new UnauthorizedException(
         JSON.stringify({
           code: ErrorCode.AUTH_INVALID_CREDENTIALS,
@@ -127,6 +150,17 @@ export class AuthService {
       this.issueTokens(payload);
     await this.createSession(user, sessionId, refreshExpiresInSeconds);
     await this.enforceConcurrentSessionLimit(user.id);
+
+    await this.securityEventLogger.logEvent({
+      eventType: SecurityEventType.AUTH_LOGIN_SUCCESS,
+      userId: user.id,
+      email: user.email,
+      sessionId,
+      description: 'User login succeeded',
+      metadata: { role: payload.role },
+      ipAddress: meta.ipAddress ?? null,
+      userAgent: meta.userAgent ?? null,
+    }).catch(() => undefined);
 
     return {
       access_token: accessToken,
@@ -287,7 +321,14 @@ export class AuthService {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
-      this.logger.error(`Refresh token failed: ${(error as Error).message}`);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      let errorMessage: string = 'Unknown error';
+      if (error instanceof Error) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        errorMessage = error.message ?? 'Unknown error';
+      }
+      this.logger.error(`Refresh token failed: ${errorMessage}`);
       throw new UnauthorizedException(
         JSON.stringify({
           code: ErrorCode.AUTH_INVALID_REFRESH_TOKEN,
@@ -318,7 +359,6 @@ export class AuthService {
     const jti = randomBytes(16).toString('hex');
     const refreshExpiresIn =
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
-    const { kid, secret: refreshSecret } = this.jwtKeyService.getActiveKey();
 
     return this.jwtService.sign(
       { ...payload, jti } as unknown as Record<string, unknown>,
@@ -378,6 +418,17 @@ export class AuthService {
       `Token family compromise detected for user ${email} (session ${sessionId}). Revoking session.`,
     );
 
+    await this.securityEventLogger
+      .logEvent({
+        eventType: SecurityEventType.AUTH_REFRESH_TOKEN_REPLAY,
+        userId,
+        email,
+        sessionId,
+        description: 'Refresh token replay detected, revoking session family',
+        metadata: { reason: 'REFRESH_TOKEN_REUSE' },
+      })
+      .catch(() => undefined);
+
     // Revoke in Redis
     await this.circuitBreaker.execute(
       async () => {
@@ -431,6 +482,16 @@ export class AuthService {
     );
     await this.redis.zrem(this.userSessionsKey(userId), sessionId);
 
+    await this.securityEventLogger
+      .logEvent({
+        eventType: SecurityEventType.AUTH_SESSION_REVOKED,
+        userId,
+        sessionId,
+        description: 'User session revoked',
+        metadata: { reason: 'USER_REQUESTED' },
+      })
+      .catch(() => undefined);
+
     // Persist revocation to database
     try {
       await this.authSessionRepository.revokeSession(sessionId, 'User logout');
@@ -458,10 +519,11 @@ export class AuthService {
     user.lockedUntil = null;
     await this.userRepository.save(user);
 
-    this.userActivityService
-      .logActivity({
+    await this.securityEventLogger
+      .logEvent({
+        eventType: SecurityEventType.AUTH_ACCOUNT_MANUALLY_UNLOCKED,
         userId: user.id,
-        activityType: ActivityType.AUTH_ACCOUNT_MANUALLY_UNLOCKED,
+        email: user.email,
         description: `Account manually unlocked by admin for ${user.email}`,
         metadata: { email: user.email, unlockedBy: 'admin' },
       })
@@ -558,10 +620,11 @@ export class AuthService {
       user.lockedUntil = null;
       user.failedLoginAttempts = 0;
       await this.userRepository.save(user);
-      this.userActivityService
-        .logActivity({
+      await this.securityEventLogger
+        .logEvent({
+          eventType: SecurityEventType.AUTH_ACCOUNT_AUTO_UNLOCKED,
           userId: user.id,
-          activityType: ActivityType.AUTH_ACCOUNT_AUTO_UNLOCKED,
+          email: user.email,
           description: `Account auto-unlocked after lock expiry for ${user.email}`,
           metadata: { email: user.email },
         })
@@ -596,10 +659,11 @@ export class AuthService {
       );
       user.lockedUntil = lockedUntil;
       await this.userRepository.save(user);
-      this.userActivityService
-        .logActivity({
+      await this.securityEventLogger
+        .logEvent({
+          eventType: SecurityEventType.AUTH_ACCOUNT_LOCKED,
           userId: user.id,
-          activityType: ActivityType.AUTH_ACCOUNT_LOCKED,
+          email: user.email,
           description: `Account locked after ${user.failedLoginAttempts} failed login attempts for ${user.email}`,
           metadata: {
             email: user.email,
