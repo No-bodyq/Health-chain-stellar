@@ -11,12 +11,15 @@ import { UserEntity } from '../users/entities/user.entity';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { EmailVerificationEntity } from './entities/email-verification.entity';
 import { AuthSessionEntity } from './entities/auth-session.entity';
+import { PasswordResetTokenEntity } from './entities/password-reset-token.entity';
 import { RolePermissionEntity } from './entities/role-permission.entity';
 import { RoleEntity } from './entities/role.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { JwtStrategy } from './jwt.strategy';
+import { PasswordResetService } from './password-reset.service';
 import { PermissionsService } from './permissions.service';
 import { AuthSessionRepository } from './repositories/auth-session.repository';
 
@@ -41,6 +44,8 @@ import { AuthSessionRepository } from './repositories/auth-session.repository';
       RolePermissionEntity,
       UserEntity,
       AuthSessionEntity,
+      EmailVerificationEntity,
+      PasswordResetTokenEntity,
     ]),
     RedisModule,
     IdempotencyModule,
@@ -49,6 +54,7 @@ import { AuthSessionRepository } from './repositories/auth-session.repository';
   controllers: [AuthController],
   providers: [
     AuthService,
+    PasswordResetService,
     JwtStrategy,
     JwtAuthGuard,
     PermissionsGuard,
@@ -57,6 +63,7 @@ import { AuthSessionRepository } from './repositories/auth-session.repository';
   ],
   exports: [
     AuthService,
+    PasswordResetService,
     JwtStrategy,
     JwtAuthGuard,
     PermissionsGuard,

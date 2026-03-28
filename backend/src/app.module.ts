@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -19,6 +20,9 @@ import { BloodRequestsModule } from './blood-requests/blood-requests.module';
 import { BloodUnitsModule } from './blood-units/blood-units.module';
 import { EventsModule } from './events/events.module';
 import { CorrelationIdService } from './common/middleware/correlation-id.service';
+import { LoggerModule } from './common/logger/logger.module';
+import { HttpLoggingInterceptor } from './common/interceptors/http-logging.interceptor';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { AppConfigModule } from './config/config.module';
 import { DispatchModule } from './dispatch/dispatch.module';
 import { DonationModule } from './donations/donation.module';
@@ -124,6 +128,9 @@ import { UsersModule } from './users/users.module';
     /** Permission enforcement applied globally; use @RequirePermissions() to specify */
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_INTERCEPTOR, useClass: ActivityLoggingInterceptor },
+    /** HTTP request/response logging with correlation IDs */
+    { provide: APP_INTERCEPTOR, useClass: HttpLoggingInterceptor },
+    GlobalExceptionFilter,
     CorrelationIdService,
   ],
 })

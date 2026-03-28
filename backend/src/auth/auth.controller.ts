@@ -9,6 +9,7 @@ import {
   Delete,
   Param,
   Patch,
+  Query,
   UseInterceptors,
 } from '@nestjs/common';
 import {
@@ -19,6 +20,7 @@ import {
   ApiHeader,
   ApiBearerAuth,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
@@ -26,6 +28,7 @@ import { RateLimit } from '../common/decorators/rate-limit.decorator';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 
 import { AuthService } from './auth.service';
+import { PasswordResetService } from './password-reset.service';
 import { Public } from './decorators/public.decorator';
 import { RequirePermissions } from './decorators/require-permissions.decorator';
 import {
@@ -34,6 +37,9 @@ import {
   RefreshTokenDto,
   RegisterDto,
   UnlockAccountDto,
+  RequestPasswordResetDto,
+  ResetPasswordDto,
+  VerifyEmailDto,
 } from './dto/auth.dto';
 import { Permission } from './enums/permission.enum';
 
@@ -42,7 +48,10 @@ import { Permission } from './enums/permission.enum';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordResetService: PasswordResetService,
+  ) {}
 
   @Public()
   @UseInterceptors(IdempotencyInterceptor)
@@ -449,5 +458,50 @@ export class AuthController {
   @Delete('admin/sessions/:userId')
   async revokeAllUserSessionsByAdmin(@Param('userId') userId: string) {
     return this.authService.revokeAllUserSessionsByAdmin(userId);
+  }
+
+  // ── Email Verification ────────────────────────────────────────────────────
+
+  @Public()
+  @Get('verify-email')
+  @ApiOperation({ summary: 'Verify email address' })
+  @ApiQuery({ name: 'token', description: 'Verification token from email' })
+  @ApiResponse({ status: 200, description: 'Email verified' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  async verifyEmail(@Query('token') token: string) {
+    return this.passwordResetService.verifyEmail(token);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Resend verification email' })
+  @ApiResponse({ status: 200, description: 'Verification email sent' })
+  async resendVerification(@Request() req: any) {
+    return this.passwordResetService.resendVerificationEmail(req.user.id);
+  }
+
+  // ── Password Reset ────────────────────────────────────────────────────────
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request password reset email' })
+  @ApiBody({ type: RequestPasswordResetDto })
+  @ApiResponse({ status: 200, description: 'Reset email sent if account exists' })
+  async forgotPassword(@Body() dto: RequestPasswordResetDto) {
+    return this.passwordResetService.requestPasswordReset(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password with token' })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.passwordResetService.resetPassword(dto.token, dto.newPassword);
   }
 }

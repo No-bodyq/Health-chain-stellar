@@ -18,8 +18,8 @@ use crate::{
         MAX_BATCH_EXPIRY_SIZE, MAX_QUANTITY_ML, MAX_SHELF_LIFE_DAYS, MIN_QUANTITY_ML,
         MIN_SHELF_LIFE_DAYS, SECONDS_PER_DAY,
     },
-    get_next_id, record_status_change, BloodRegisteredEvent, BloodStatus, BloodType, BloodUnit,
-    Error, BLOOD_UNITS,
+    get_next_id, record_status_change, BloodComponent, BloodRegisteredEvent, BloodStatus,
+    BloodType, BloodUnit, Error, BLOOD_UNITS,
 };
 
 // ── WRITE ─────────────────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ pub fn register_unit(
     env: &Env,
     bank_id: Address,
     blood_type: BloodType,
+    component: BloodComponent,
     quantity_ml: u32,
     expiration_timestamp: u64,
     donor_id: Option<Symbol>,
@@ -59,6 +60,7 @@ pub fn register_unit(
     let blood_unit = BloodUnit {
         id: unit_id,
         blood_type,
+        component,
         quantity: quantity_ml,
         expiration_date: expiration_timestamp,
         donor_id: donor_id.clone().unwrap_or(symbol_short!("ANON")),
@@ -94,6 +96,7 @@ pub fn register_unit(
     let event = BloodRegisteredEvent {
         unit_id,
         blood_type,
+        component,
         quantity_ml,
         bank_id,
         expiration_timestamp,

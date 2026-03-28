@@ -106,3 +106,28 @@ export class UnlockAccountDto {
   @IsNotEmpty()
   userId: string;
 }
+
+export class RequestPasswordResetDto {
+  @ApiProperty({ description: 'Email address', example: 'user@example.com' })
+  @IsEmail()
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ description: 'Reset token from email' })
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @ApiProperty({ description: 'New password (min 8 chars)', minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
+}
+
+export class VerifyEmailDto {
+  @ApiProperty({ description: 'Email verification token' })
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}

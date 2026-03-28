@@ -9,9 +9,10 @@ use soroban_sdk::{
 };
 
 use crate::{
-    BloodStatus, BloodType, BloodUnit, HealthChainContract, HealthChainContractClient, ADMIN,
-    BLOOD_BANKS, BLOOD_UNITS, CUSTODY_EVENTS, DISPUTES, HISTORY, HOSPITALS, NEXT_DISPUTE_ID,
-    NEXT_ID, NEXT_PAYMENT_ID, NEXT_REQUEST_ID, PAYMENTS, REQUESTS, REQUEST_KEYS,
+    BloodComponent, BloodStatus, BloodType, BloodUnit, HealthChainContract,
+    HealthChainContractClient, ADMIN, BLOOD_BANKS, BLOOD_UNITS, CUSTODY_EVENTS, DISPUTES, HISTORY,
+    HOSPITALS, NEXT_DISPUTE_ID, NEXT_ID, NEXT_PAYMENT_ID, NEXT_REQUEST_ID, PAYMENTS, REQUESTS,
+    REQUEST_KEYS,
 };
 
 #[test]
@@ -31,6 +32,7 @@ fn test_register_unit_creates_blood_unit_in_persistent_storage() {
     let unit_id = client.register_blood(
         &bank,
         &BloodType::APositive,
+        &BloodComponent::WholeBlood,
         &450,
         &(env.ledger().timestamp() + 86400 * 30),
         &Some(symbol_short!("DONOR1")),
@@ -74,6 +76,7 @@ fn test_register_unit_creates_bank_units_index_in_persistent_storage() {
     let unit_id = client.register_blood(
         &bank,
         &BloodType::OPositive,
+        &BloodComponent::WholeBlood,
         &350,
         &(env.ledger().timestamp() + 86400 * 20),
         &None,
@@ -125,6 +128,7 @@ fn test_register_unit_creates_donor_units_index_in_persistent_storage() {
     let unit_id = client.register_blood(
         &bank,
         &BloodType::BNegative,
+        &BloodComponent::WholeBlood,
         &400,
         &(env.ledger().timestamp() + 86400 * 25),
         &Some(donor_id.clone()),
@@ -203,6 +207,7 @@ fn test_update_status_modifies_existing_entry_no_new_key() {
     let unit_id = client.register_blood(
         &bank,
         &BloodType::ABPositive,
+        &BloodComponent::WholeBlood,
         &300,
         &(env.ledger().timestamp() + 86400 * 35),
         &None,
@@ -246,7 +251,7 @@ fn test_expire_unit_updates_status_field_no_deletion() {
 
     // Register unit with short expiration
     let expiration = env.ledger().timestamp() + 86400; // 1 day
-    let unit_id = client.register_blood(&bank, &BloodType::ONegative, &250, &expiration, &None);
+    let unit_id = client.register_blood(&bank, &BloodType::ONegative, &BloodComponent::WholeBlood, &250, &expiration, &None);
 
     // Fast-forward time past expiration
     env.ledger().with_mut(|li| {
@@ -296,6 +301,7 @@ fn test_register_two_units_same_bank_creates_two_entries() {
     let unit_id_1 = client.register_blood(
         &bank,
         &BloodType::APositive,
+        &BloodComponent::WholeBlood,
         &450,
         &(env.ledger().timestamp() + 86400 * 30),
         &Some(symbol_short!("DONOR1")),
@@ -304,6 +310,7 @@ fn test_register_two_units_same_bank_creates_two_entries() {
     let unit_id_2 = client.register_blood(
         &bank,
         &BloodType::BPositive,
+        &BloodComponent::WholeBlood,
         &350,
         &(env.ledger().timestamp() + 86400 * 28),
         &Some(symbol_short!("DONOR2")),

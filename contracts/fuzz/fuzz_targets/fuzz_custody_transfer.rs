@@ -9,7 +9,8 @@ use soroban_sdk::{
 
 // Import the contract types
 use health_chain_contract::{
-    BloodStatus, BloodType, CustodyStatus, Error, HealthChainContract, HealthChainContractClient,
+    BloodComponent, BloodStatus, BloodType, CustodyStatus, Error, HealthChainContract,
+    HealthChainContractClient,
 };
 
 /// Represents a custody transfer operation
@@ -75,6 +76,7 @@ fuzz_target!(|input: FuzzInput| {
         let unit_id = client.register_blood(
             &bank,
             &BloodType::OPositive,
+            &BloodComponent::WholeBlood,
             &450,
             &expiration,
             &Some(Symbol::new(&env, &format!("DONOR{}", idx))),
