@@ -51,6 +51,12 @@ export class RidersController {
   }
 
   @RequirePermissions(Permission.VIEW_RIDERS)
+  @Get('leaderboard')
+  getLeaderboard(@Query('limit') limit?: string) {
+    return this.ridersService.getLeaderboard(limit ? parseInt(limit, 10) : 10);
+  }
+
+  @RequirePermissions(Permission.VIEW_RIDERS)
   @Get('nearby')
   getNearby(
     @Query('latitude') latitude: string,
@@ -74,6 +80,12 @@ export class RidersController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ridersService.findOne(id);
+  }
+
+  @RequirePermissions(Permission.VIEW_RIDERS)
+  @Get(':id/performance')
+  getPerformance(@Param('id') id: string) {
+    return this.ridersService.getPerformance(id);
   }
 
   @Post('register')

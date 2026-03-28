@@ -34,4 +34,9 @@ pub enum ContractError {
     // Blood-specific errors (140-149)
     BloodUnitNotAvailable = 140,
     InvalidStatusTransition = 141,
+
+    // Reservation errors (150-159)
+    ReservationNotFound = 150,
+    ReservationExpired = 151,
+    NotReservationOwner = 152,
 }

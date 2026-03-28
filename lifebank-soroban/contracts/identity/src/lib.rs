@@ -136,7 +136,6 @@ pub enum DataKey {
     Org(Address),
     License(String),
     Docs(Address),
-    Role(Address),
     OrgCounter,
     Admin,
     OrgTypeList(OrgType),
@@ -149,7 +148,7 @@ pub enum DataKey {
     OrgBadges(Address),
     // Delivery
     Delivery(u64),
-    // AccessControlContract
+    // AccessControlContract (and IdentityContract role storage)
     AddressRoles(Address),
 }
 
@@ -274,16 +273,65 @@ impl IdentityContract {
         Ok(org_id)
     }
 
-    /// Internal helper to grant a role to an address
+    /// Internal helper to grant a role to an address.
+    ///
+    /// Stores all roles for an address in a single `DataKey::AddressRoles` entry
+    /// (a sorted, deduplicated `Vec<RoleGrant>`), reducing per-address storage
+    /// overhead from N entries to 1.
     pub fn grant_role(env: Env, address: Address, role: Role) {
-        env.storage()
+        let key = DataKey::AddressRoles(address.clone());
+        let mut roles: Vec<RoleGrant> = env
+            .storage()
             .persistent()
-            .set(&DataKey::Role(address), &role);
+            .get(&key)
+            .unwrap_or(Vec::new(&env));
+
+        // Deduplicate: remove existing grant for this role before inserting.
+        let mut new_roles: Vec<RoleGrant> = Vec::new(&env);
+        for i in 0..roles.len() {
+            let g = roles.get(i).unwrap();
+            if g.role != role {
+                new_roles.push_back(g);
+            }
+        }
+
+        let grant = RoleGrant {
+            role: role.clone(),
+            granted_at: env.ledger().timestamp(),
+            expires_at: None,
+        };
+
+        // Insert in sorted order to keep the vec deterministically ordered.
+        let mut inserted = false;
+        let mut sorted: Vec<RoleGrant> = Vec::new(&env);
+        for i in 0..new_roles.len() {
+            let g = new_roles.get(i).unwrap();
+            if !inserted && grant.role < g.role {
+                sorted.push_back(grant.clone());
+                inserted = true;
+            }
+            sorted.push_back(g);
+        }
+        if !inserted {
+            sorted.push_back(grant);
+        }
+
+        env.storage().persistent().set(&key, &sorted);
     }
 
-    /// Get the role of an address
+    /// Get the primary role of an address (first role in the sorted vec, if any).
     pub fn get_role(env: Env, address: Address) -> Option<Role> {
-        env.storage().persistent().get(&DataKey::Role(address))
+        let key = DataKey::AddressRoles(address);
+        let roles: Vec<RoleGrant> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(Vec::new(&env));
+        if roles.is_empty() {
+            None
+        } else {
+            Some(roles.get(0).unwrap().role)
+        }
     }
 
     /// Get organization by ID
@@ -293,8 +341,18 @@ impl IdentityContract {
 
     /// Check if an address has a given role
     pub fn has_role(env: Env, account: Address, role: Role) -> bool {
-        let stored: Option<Role> = env.storage().persistent().get(&DataKey::Role(account));
-        stored.map(|r| r == role).unwrap_or(false)
+        let key = DataKey::AddressRoles(account);
+        let roles: Vec<RoleGrant> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(Vec::new(&env));
+        for i in 0..roles.len() {
+            if roles.get(i).unwrap().role == role {
+                return true;
+            }
+        }
+        false
     }
 
     /// Require that an address has a given role, return Unauthorized error if not

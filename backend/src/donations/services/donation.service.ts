@@ -75,4 +75,11 @@ export class DonationService {
       order: { createdAt: 'DESC' },
     });
   }
+
+  async getDonationsByDonorUserId(donorUserId: string): Promise<DonationEntity[]> {
+    return this.donationRepository.find({
+      where: { donorUserId },
+      order: { createdAt: 'DESC' },
+    });
+  }
 }

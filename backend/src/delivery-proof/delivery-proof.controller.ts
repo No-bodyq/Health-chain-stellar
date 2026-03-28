@@ -1,11 +1,17 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 
-import { DeliveryProofService } from './delivery-proof.service';
+import { CreateDeliveryProofDto } from './dto/create-delivery-proof.dto';
 import { DeliveryProofQueryDto } from './dto/delivery-proof-query.dto';
+import { DeliveryProofService } from './delivery-proof.service';
 
 @Controller('delivery-proofs')
 export class DeliveryProofController {
   constructor(private readonly service: DeliveryProofService) {}
+
+  @Post()
+  create(@Body() dto: CreateDeliveryProofDto) {
+    return this.service.create(dto);
+  }
 
   @Get(':id')
   getOne(@Param('id') id: string) {

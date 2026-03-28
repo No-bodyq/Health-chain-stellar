@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, vec, Address, Env, Map,
-    String, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, symbol_short, vec, Address, Bytes, Env,
+    Map, String, Symbol, Vec,
 };
 
 pub mod constants;
@@ -57,6 +57,8 @@ pub enum Error {
     OrganizationNotFound = 26,
     /// Organization is already verified.
     AlreadyVerified = 27,
+    /// Caller is an authorized actor but is not the current custodian of the unit.
+    NotCurrentCustodian = 29,
 }
 
 // Alias for issue/docs terminology.
@@ -298,7 +300,8 @@ pub struct DisputeRaisedEvent {
     pub dispute_id: u64,
     pub payment_id: u64,
     pub raised_by: Address,
-    pub reason: Symbol,
+    pub reason: String,
+    pub evidence_digest: Bytes,
     pub timestamp: u64,
 }
 
@@ -765,6 +768,11 @@ impl HealthChainContract {
             .unwrap_or(Map::new(&env));
 
         let mut unit = units.get(unit_id).ok_or(Error::UnitNotFound)?;
+
+        // Verify the caller is the current custodian of this specific unit.
+        if unit.bank_id != bank_id {
+            return Err(Error::NotCurrentCustodian);
+        }
 
         // --- NEW: REQUIREMENT #67 GUARD ---
         if unit.status == BloodStatus::Expired {
@@ -1684,8 +1692,9 @@ impl HealthChainContract {
         env: Env,
         payment_id: u64,
         raised_by: Address,
-        reason: Symbol,
-        evidence_hash: Symbol,
+        reason: String,
+        evidence_digest: Bytes,
+        evidence_ref_chunks: Vec<String>,
     ) -> Result<u64, Error> {
         raised_by.require_auth();
 
@@ -1713,7 +1722,8 @@ impl HealthChainContract {
             raised_by: raised_by.clone(),
             status: DisputeStatus::Open,
             reason: reason.clone(),
-            evidence_hash,
+            evidence_digest: evidence_digest.clone(),
+            evidence_ref_chunks: evidence_ref_chunks.clone(),
             raised_at: env.ledger().timestamp(),
             resolved_at: None,
         };
@@ -1755,6 +1765,7 @@ impl HealthChainContract {
                 payment_id,
                 raised_by,
                 reason,
+                evidence_digest,
                 timestamp: env.ledger().timestamp(),
             },
         );
@@ -4617,6 +4628,75 @@ mod test {
         let unit_ids = vec![&env, 1u64];
         env.mock_all_auths();
         client.fulfill_request(&bank, &999u64, &unit_ids);
+    }
+
+
+    // ======================================================
+    // Custodian Check Tests (#101)
+    // ======================================================
+
+    #[test]
+    fn test_initiate_transfer_by_current_custodian_succeeds() {
+        let env = Env::default();
+        let (_, _, hospital, client) = setup_contract_with_hospital(&env);
+
+        let bank = Address::generate(&env);
+        env.mock_all_auths();
+        client.register_blood_bank(&bank);
+
+        let current_time = env.ledger().timestamp();
+        let expiration = current_time + (7 * 86400);
+        let unit_id =
+            client.register_blood(&bank, &BloodType::OPositive, &450, &expiration, &None);
+        client.allocate_blood(&bank, &unit_id, &hospital);
+
+        // Current custodian (bank) can initiate transfer
+        let event_id = client.initiate_transfer(&bank, &unit_id);
+        assert!(!event_id.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #29)")] // NotCurrentCustodian
+    fn test_initiate_transfer_by_non_custodian_authorized_bank_fails() {
+        let env = Env::default();
+        let (_, _, hospital, client) = setup_contract_with_hospital(&env);
+
+        let bank_a = Address::generate(&env);
+        let bank_b = Address::generate(&env);
+        env.mock_all_auths();
+        client.register_blood_bank(&bank_a);
+        client.register_blood_bank(&bank_b);
+
+        let current_time = env.ledger().timestamp();
+        let expiration = current_time + (7 * 86400);
+        // bank_a registers and allocates the unit — bank_a is the custodian
+        let unit_id =
+            client.register_blood(&bank_a, &BloodType::OPositive, &450, &expiration, &None);
+        client.allocate_blood(&bank_a, &unit_id, &hospital);
+
+        // bank_b is authorized but is NOT the custodian — must fail
+        client.initiate_transfer(&bank_b, &unit_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #1)")] // Unauthorized
+    fn test_initiate_transfer_by_unregistered_address_fails() {
+        let env = Env::default();
+        let (_, _, hospital, client) = setup_contract_with_hospital(&env);
+
+        let bank = Address::generate(&env);
+        let rogue = Address::generate(&env);
+        env.mock_all_auths();
+        client.register_blood_bank(&bank);
+
+        let current_time = env.ledger().timestamp();
+        let expiration = current_time + (7 * 86400);
+        let unit_id =
+            client.register_blood(&bank, &BloodType::OPositive, &450, &expiration, &None);
+        client.allocate_blood(&bank, &unit_id, &hospital);
+
+        // Completely unregistered address — must fail with Unauthorized, not NotCurrentCustodian
+        client.initiate_transfer(&rogue, &unit_id);
     }
 
     // ======================================================

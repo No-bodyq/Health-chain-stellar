@@ -201,4 +201,87 @@ export class RidersService {
       data: nearbyRiders,
     };
   }
+
+  async getPerformance(id: string): Promise<{
+    message: string;
+    data: {
+      riderId: string;
+      totalDeliveries: number;
+      completedDeliveries: number;
+      cancelledDeliveries: number;
+      failedDeliveries: number;
+      successRate: number;
+      onTimeRate: number;
+      rating: number;
+      status: RiderStatus;
+      isVerified: boolean;
+    };
+  }> {
+    const { data: rider } = await this.findOne(id);
+
+    const total =
+      rider.completedDeliveries +
+      rider.cancelledDeliveries +
+      rider.failedDeliveries;
+
+    const successRate =
+      total === 0
+        ? 0
+        : Math.round((rider.completedDeliveries / total) * 10000) / 100;
+
+    // on-time rate approximated from completed vs total attempted (cancelled + failed treated as late/missed)
+    const onTimeRate = successRate;
+
+    return {
+      message: 'Rider performance retrieved successfully',
+      data: {
+        riderId: rider.id,
+        totalDeliveries: total,
+        completedDeliveries: rider.completedDeliveries,
+        cancelledDeliveries: rider.cancelledDeliveries,
+        failedDeliveries: rider.failedDeliveries,
+        successRate,
+        onTimeRate,
+        rating: rider.rating,
+        status: rider.status,
+        isVerified: rider.isVerified,
+      },
+    };
+  }
+
+  async getLeaderboard(limit = 10): Promise<{
+    message: string;
+    data: Array<{
+      rank: number;
+      riderId: string;
+      completedDeliveries: number;
+      successRate: number;
+      rating: number;
+    }>;
+  }> {
+    const riders = await this.riderRepository.find({
+      where: { isVerified: true },
+    });
+
+    const ranked = riders
+      .map((r) => {
+        const total =
+          r.completedDeliveries + r.cancelledDeliveries + r.failedDeliveries;
+        const successRate =
+          total === 0
+            ? 0
+            : Math.round((r.completedDeliveries / total) * 10000) / 100;
+        return { riderId: r.id, completedDeliveries: r.completedDeliveries, successRate, rating: r.rating };
+      })
+      .sort(
+        (a, b) =>
+          b.completedDeliveries - a.completedDeliveries ||
+          b.successRate - a.successRate ||
+          b.rating - a.rating,
+      )
+      .slice(0, limit)
+      .map((r, i) => ({ rank: i + 1, ...r }));
+
+    return { message: 'Leaderboard retrieved successfully', data: ranked };
+  }
 }

@@ -38,7 +38,7 @@ import {
 import { Permission } from './enums/permission.enum';
 
 /** Stricter than global default (100/min) to reduce brute-force and abuse on auth. */
-@Throttle({ default: { limit: 20, ttl: 60_000 } })
+@Throttle({ auth: { limit: 10, ttl: 60_000 } })
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {

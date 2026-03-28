@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { DonationJourney, DonationStatus } from "@/components/donations/DonationJourney";
+import { PledgeForm } from "@/components/donations/PledgeForm";
 
 const MOCK_DONATIONS = [
   {
@@ -67,6 +68,10 @@ export default function DonationLifecyclePage() {
         </div>
 
         <DonationJourney {...MOCK_DONATIONS[selected]} />
+
+        <div className="mt-12">
+          <PledgeForm />
+        </div>
       </div>
     </div>
   );

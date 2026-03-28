@@ -22,6 +22,14 @@ fn make_payment(
     (id, payer, payee)
 }
 
+/// Deploy a minimal Soroban token contract and mint `amount` to `recipient`.
+fn deploy_token_with_balance(env: &Env, admin: &Address, recipient: &Address, amount: i128) -> Address {
+    let token_id = env.register(soroban_sdk::token::StellarAssetContract, (admin, &soroban_sdk::Symbol::new(env, "TST")));
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(env, &token_id);
+    token_admin.mint(recipient, &amount);
+    token_id
+}
+
 // ── create_payment ─────────────────────────────────────────────────────────────
 
 #[test]
@@ -411,4 +419,45 @@ fn test_update_status_returns_not_found_for_missing_payment() {
     let client = PaymentContractClient::new(&env, &cid);
     let result = client.try_update_status(&999u64, &PaymentStatus::Locked);
     assert!(result.is_err());
+}
+
+// ── donation pledges ───────────────────────────────────────────────────────────
+
+#[test]
+fn test_create_pledge_stores_metadata() {
+    let (env, cid) = setup();
+    let client = PaymentContractClient::new(&env, &cid);
+    let donor = Address::generate(&env);
+    let pool = soroban_sdk::String::from_str(&env, "hospital-pool-42");
+    let cause = soroban_sdk::String::from_str(&env, "maternal_health");
+    let region = soroban_sdk::String::from_str(&env, "NG-Lagos");
+
+    let id = client.create_pledge(
+        &donor,
+        &500i128,
+        &2_592_000u64,
+        &pool,
+        &cause,
+        &region,
+        &true,
+    );
+
+    let p = client.get_pledge(&id);
+    assert_eq!(p.donor, donor);
+    assert_eq!(p.amount_per_period, 500);
+    assert_eq!(p.interval_secs, 2_592_000);
+    assert!(p.emergency_pool);
+    assert!(p.active);
+}
+
+#[test]
+fn test_create_pledge_rejects_zero_interval() {
+    let (env, cid) = setup();
+    let client = PaymentContractClient::new(&env, &cid);
+    let donor = Address::generate(&env);
+    let pool = soroban_sdk::String::from_str(&env, "pool");
+    let cause = soroban_sdk::String::from_str(&env, "c");
+    let region = soroban_sdk::String::from_str(&env, "r");
+    let r = client.try_create_pledge(&donor, &100i128, &0u64, &pool, &cause, &region, &false);
+    assert!(r.is_err());
 }

@@ -286,6 +286,11 @@ impl CoordinatorContract {
 
         for i in 0..wf.unit_ids.len() {
             let uid = wf.unit_ids.get(i).unwrap();
+            // Inventory enforces Reserved → InTransit → Delivered; coordinator must not skip InTransit.
+            inv_client
+                .try_update_status(&uid, &BloodStatus::InTransit, &inv_admin, &None)
+                .map_err(|_| CoordinatorError::InventoryUpdateFailed)?
+                .map_err(|_| CoordinatorError::InventoryUpdateFailed)?;
             inv_client
                 .try_mark_delivered(&uid, &inv_admin, &location)
                 .map_err(|_| CoordinatorError::InventoryUpdateFailed)?

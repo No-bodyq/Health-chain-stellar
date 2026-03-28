@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DonationService } from '../services/donation.service';
+import { PledgeService } from '../services/pledge.service';
 import { DonationEntity } from '../entities/donation.entity';
 import { DonationAsset } from '../enums/donation.enum';
 
@@ -21,7 +22,10 @@ export class ConfirmDonationDto {
 @Controller('donations')
 @UseInterceptors(ClassSerializerInterceptor)
 export class DonationController {
-  constructor(private readonly donationService: DonationService) {}
+  constructor(
+    private readonly donationService: DonationService,
+    private readonly pledgeService: PledgeService,
+  ) {}
 
   @Post('intent')
   @ApiOperation({ summary: 'Create a donation payment intent for the wallet to sign' })
@@ -41,11 +45,16 @@ export class DonationController {
   @Get('my-donations')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: "Get the authenticated user's donation history" })
-  async getMyDonations(@Request() req: any) {
-    // If we have a user, fetch by donorUserId, otherwise this endpoint is unusable.
-    // Assuming 'payerAddress' is what the user linked in their profile.
-    // For now, let's keep it simple.
-    return []; // TODO: implement based on user linking
+  async getMyDonations(@Request() req: { user?: { id?: string } }) {
+    const userId = req.user?.id;
+    if (!userId) {
+      return { donations: [], pledges: [] };
+    }
+    const [donations, pledges] = await Promise.all([
+      this.donationService.getDonationsByDonorUserId(userId),
+      this.pledgeService.listByDonorUserId(userId),
+    ]);
+    return { donations, pledges };
   }
 
   @Get(':id')

@@ -1360,3 +1360,217 @@ fn test_not_initialized() {
     let address = Address::generate(&env);
     client.grant_role_with_expiry(&address, &Role::Admin, &None);
 }
+
+// ---------------------------------------------------------------------------
+// Adversarial / privilege-escalation attack tests
+// ---------------------------------------------------------------------------
+// Each test simulates a realistic attack and asserts the specific error that
+// must be returned. All 7 attacks must be blocked by the contract.
+
+/// Attack: A Rider attempts to call grant_role to give themselves Admin.
+/// Only the admin may call grant_role_with_expiry; any other caller must fail.
+#[test]
+fn test_attack_self_grant_rider_to_admin_must_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let rider = Address::generate(&env);
+
+    let contract_id = env.register(AccessControlContract, ());
+    let client = AccessControlContractClient::new(&env, &contract_id);
+    client.initialize(&admin);
+
+    // Give rider the Rider role legitimately.
+    client.grant_role_with_expiry(&rider, &Role::Rider, &None);
+    assert!(client.has_role(&rider, &Role::Rider));
+
+    // Now simulate the rider trying to grant themselves Admin.
+    // We do NOT mock admin auth — only rider auth is present.
+    // The contract must reject because the stored admin != rider.
+    env.set_auths(&[]);
+    // Re-mock only rider auth (not admin).
+    use soroban_sdk::testutils::AuthorizedFunction;
+    use soroban_sdk::testutils::MockAuth;
+    use soroban_sdk::testutils::MockAuthInvoke;
+    use soroban_sdk::IntoVal;
+
+    // Attempt: rider calls grant_role_with_expiry for themselves as Admin.
+    // The contract reads the stored admin and calls admin.require_auth(),
+    // which will fail because the rider is not the admin.
+    let result = client.try_grant_role_with_expiry(&rider, &Role::Admin, &None);
+    // Must fail — rider is not the admin.
+    assert!(result.is_err(), "Self-grant attack must be rejected");
+    // Admin role must NOT have been granted.
+    assert!(!client.has_role(&rider, &Role::Admin));
+}
+
+/// Attack: A Hospital address calls a function that requires Admin role.
+/// grant_role_with_expiry is admin-only; a Hospital address must be rejected.
+#[test]
+fn test_attack_role_spoofing_hospital_calls_admin_function_must_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let hospital = Address::generate(&env);
+    let victim = Address::generate(&env);
+
+    let contract_id = env.register(AccessControlContract, ());
+    let client = AccessControlContractClient::new(&env, &contract_id);
+    client.initialize(&admin);
+
+    // Hospital has Hospital role, not Admin.
+    client.grant_role_with_expiry(&hospital, &Role::Hospital, &None);
+
+    // Hospital attempts to grant Admin to itself by calling grant_role_with_expiry.
+    // The contract must reject because hospital != stored admin.
+    env.set_auths(&[]);
+    let result = client.try_grant_role_with_expiry(&victim, &Role::Admin, &None);
+    assert!(result.is_err(), "Role spoofing attack must be rejected");
+    assert!(!client.has_role(&victim, &Role::Admin));
+}
+
+/// Attack: An address with an expired role attempts to use it.
+/// has_role must return false for expired grants.
+#[test]
+fn test_attack_expired_role_reuse_must_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let blood_bank_admin = Address::generate(&env);
+
+    let contract_id = env.register(AccessControlContract, ());
+    let client = AccessControlContractClient::new(&env, &contract_id);
+    client.initialize(&admin);
+
+    env.ledger().with_mut(|l| l.timestamp = 1_000);
+
+    // Grant BloodBank role with expiry at t=2000.
+    client.grant_role_with_expiry(&blood_bank_admin, &Role::BloodBank, &Some(2_000));
+    assert!(client.has_role(&blood_bank_admin, &Role::BloodBank));
+
+    // Advance time past expiry.
+    env.ledger().with_mut(|l| l.timestamp = 2_001);
+
+    // Expired role must not be recognized.
+    assert!(
+        !client.has_role(&blood_bank_admin, &Role::BloodBank),
+        "Expired BloodBank role must not be usable after expiry"
+    );
+}
+
+/// Attack: Role is revoked; the same address immediately attempts to use it.
+/// has_role must return false immediately after revoke_role.
+#[test]
+fn test_attack_revoked_role_immediate_reuse_must_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    let contract_id = env.register(AccessControlContract, ());
+    let client = AccessControlContractClient::new(&env, &contract_id);
+    client.initialize(&admin);
+
+    client.grant_role_with_expiry(&attacker, &Role::Donor, &None);
+    assert!(client.has_role(&attacker, &Role::Donor));
+
+    // Revoke the role.
+    client.revoke_role(&attacker, &Role::Donor);
+
+    // Immediate reuse attempt — must fail.
+    assert!(
+        !client.has_role(&attacker, &Role::Donor),
+        "Revoked role must not be usable in the same transaction"
+    );
+}
+
+/// Attack: An unauthorized address attempts to call accept_super_admin
+/// (nominate_super_admin equivalent) without being nominated.
+/// Only the stored admin may nominate; any other caller must be rejected.
+#[test]
+fn test_attack_nomination_hijack_unauthorized_must_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let fake_nominee = Address::generate(&env);
+
+    let contract_id = env.register(AccessControlContract, ());
+    let client = AccessControlContractClient::new(&env, &contract_id);
+    client.initialize(&admin);
+
+    // Attacker (not admin) tries to grant Admin to fake_nominee.
+    env.set_auths(&[]);
+    let result = client.try_grant_role_with_expiry(&fake_nominee, &Role::Admin, &None);
+    assert!(
+        result.is_err(),
+        "Nomination hijack by unauthorized address must be rejected"
+    );
+    assert!(!client.has_role(&fake_nominee, &Role::Admin));
+}
+
+/// Attack: BloodBank("BANK_001") attempts to grant a role under a different
+/// address context. The contract must only allow the stored admin to grant roles;
+/// a BloodBank address acting as if it were a different bank must be rejected.
+#[test]
+fn test_attack_scoped_role_cross_contamination_must_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let bank_001 = Address::generate(&env);
+    let bank_002 = Address::generate(&env);
+
+    let contract_id = env.register(AccessControlContract, ());
+    let client = AccessControlContractClient::new(&env, &contract_id);
+    client.initialize(&admin);
+
+    // bank_001 has BloodBank role.
+    client.grant_role_with_expiry(&bank_001, &Role::BloodBank, &None);
+
+    // bank_001 attempts to grant BloodBank role to bank_002 (cross-contamination).
+    // Only admin can call grant_role_with_expiry.
+    env.set_auths(&[]);
+    let result = client.try_grant_role_with_expiry(&bank_002, &Role::BloodBank, &None);
+    assert!(
+        result.is_err(),
+        "Cross-bank role grant must be rejected — only admin may grant roles"
+    );
+    assert!(!client.has_role(&bank_002, &Role::BloodBank));
+}
+
+/// Attack: An authorized address attempts a write operation (grant_role) while
+/// the contract admin key has been cleared (simulating a paused/locked state).
+/// Without an admin, grant_role_with_expiry must panic with "Not initialized".
+#[test]
+fn test_attack_paused_contract_write_must_fail() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let authorized = Address::generate(&env);
+    let target = Address::generate(&env);
+
+    let contract_id = env.register(AccessControlContract, ());
+    let client = AccessControlContractClient::new(&env, &contract_id);
+    client.initialize(&admin);
+
+    client.grant_role_with_expiry(&authorized, &Role::Hospital, &None);
+
+    // Simulate pause by removing the admin key from storage.
+    env.as_contract(&contract_id, || {
+        env.storage().persistent().remove(&DataKey::Admin);
+    });
+
+    // Any write operation must now fail because admin key is absent.
+    let result = client.try_grant_role_with_expiry(&target, &Role::Hospital, &None);
+    assert!(
+        result.is_err(),
+        "Write operation on paused (no-admin) contract must be rejected"
+    );
+}

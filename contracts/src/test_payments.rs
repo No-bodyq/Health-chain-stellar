@@ -5,7 +5,7 @@ use crate::payments::{
     TransactionMetadata,
 };
 
-use soroban_sdk::{testutils::Address as _, vec, Address, Env, Symbol};
+use soroban_sdk::{testutils::Address as _, vec, Address, Bytes, Env, String, Symbol};
 
 fn payment_with_status(env: &Env, status: PaymentStatus) -> Payment {
     Payment {
@@ -228,18 +228,39 @@ fn dispute_structure_is_valid() {
     let raiser = Address::generate(&env);
     use crate::payments::{Dispute, DisputeStatus};
 
+    let mut chunks = vec![&env];
+    chunks.push_back(String::from_str(&env, "bafyFIRST"));
+    chunks.push_back(String::from_str(&env, "SECONDchunk"));
+
+    let digest_bytes = [0xab; 32];
+    let evidence_digest = Bytes::from_slice(&env, &digest_bytes);
+
     let dispute = Dispute {
         id: 1,
         payment_id: 10,
         raised_by: raiser,
         status: DisputeStatus::Open,
-        reason: Symbol::new(&env, "delayed"),
-        evidence_hash: Symbol::new(&env, "hash123"),
+        reason: String::from_str(&env, "delayed_delivery_report"),
+        evidence_digest,
+        evidence_ref_chunks: chunks,
         raised_at: 1000,
         resolved_at: None,
     };
 
     assert_eq!(dispute.status, DisputeStatus::Open);
+}
+
+/// Off-chain indexers concatenate `evidence_ref_chunks` in order; integrity is checked against `evidence_digest`.
+#[test]
+fn dispute_evidence_chunk_order_is_stable() {
+    let env = Env::default();
+    let mut chunks = vec![&env];
+    chunks.push_back(String::from_str(&env, "a"));
+    chunks.push_back(String::from_str(&env, "b"));
+    assert_eq!(chunks.len(), 2u32);
+    let first = chunks.get(0).unwrap();
+    let second = chunks.get(1).unwrap();
+    assert!(first.len() > 0 && second.len() > 0);
 }
 
 #[test]

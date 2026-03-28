@@ -201,3 +201,29 @@ fn increment_status_history_counter(env: &Env) -> u64 {
     env.storage().instance().set(&key, &next_id);
     next_id
 }
+
+/// Increment and return the next reservation ID
+pub fn increment_reservation_id(env: &Env) -> u64 {
+    let key = DataKey::ReservationCounter;
+    let current: u64 = env.storage().instance().get(&key).unwrap_or(0);
+    let next_id = current + 1;
+    env.storage().instance().set(&key, &next_id);
+    next_id
+}
+
+/// Store a reservation (temporary storage — auto-expires with ledger TTL)
+pub fn set_reservation(env: &Env, id: u64, reservation: &crate::types::Reservation) {
+    env.storage()
+        .temporary()
+        .set(&DataKey::Reservation(id), reservation);
+}
+
+/// Get a reservation by ID
+pub fn get_reservation(env: &Env, id: u64) -> Option<crate::types::Reservation> {
+    env.storage().temporary().get(&DataKey::Reservation(id))
+}
+
+/// Remove a reservation
+pub fn remove_reservation(env: &Env, id: u64) {
+    env.storage().temporary().remove(&DataKey::Reservation(id));
+}

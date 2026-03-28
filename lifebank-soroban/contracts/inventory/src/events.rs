@@ -70,3 +70,17 @@ pub fn emit_invalid_transition(
         (blood_unit_id, from_status as u32, to_status as u32),
     );
 }
+
+pub fn emit_blood_reserved(env: &Env, reservation_id: u64, requester: &Address, unit_count: u32) {
+    env.events().publish(
+        (Symbol::new(env, "blood_reserved"),),
+        (reservation_id, requester.clone(), unit_count),
+    );
+}
+
+pub fn emit_reservation_released(env: &Env, reservation_id: u64) {
+    env.events().publish(
+        (Symbol::new(env, "reservation_released"),),
+        reservation_id,
+    );
+}

@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 import {
   Injectable,
@@ -34,8 +34,6 @@ import {
   dummyVerify,
 } from './utils/password.util';
 
-const PASSWORD_HISTORY_LIMIT = 3;
-
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -43,6 +41,7 @@ export class AuthService {
   private readonly fallbackStore: AuthSessionFallbackStore;
   private readonly maxFailedLoginAttempts: number;
   private readonly accountLockMinutes: number;
+  private readonly passwordHistoryLength: number;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -55,14 +54,9 @@ export class AuthService {
   ) {
     this.circuitBreaker = new RedisCircuitBreaker();
     this.fallbackStore = new AuthSessionFallbackStore();
-    this.maxFailedLoginAttempts = this.configService.get<number>(
-      'MAX_FAILED_LOGIN_ATTEMPTS',
-      5,
-    );
-    this.accountLockMinutes = this.configService.get<number>(
-      'ACCOUNT_LOCK_MINUTES',
-      15,
-    );
+    this.maxFailedLoginAttempts = this.configService.get<number>('MAX_FAILED_LOGIN_ATTEMPTS', 5);
+    this.accountLockMinutes = this.configService.get<number>('ACCOUNT_LOCK_MINUTES', 15);
+    this.passwordHistoryLength = this.configService.get<number>('PASSWORD_HISTORY_LENGTH', 3);
   }
 
   async validateUser(
@@ -203,7 +197,9 @@ export class AuthService {
         );
       }
 
-      const tokenKey = `auth:refresh-consumed:${refreshToken}`;
+      // Hash the raw token so the raw value is never stored as a Redis key.
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+      const tokenKey = `auth:refresh-consumed:${tokenHash}`;
       const expiresAt = payload.exp
         ? payload.exp - Math.floor(Date.now() / 1000)
         : this.getRefreshTokenExpirySeconds();
@@ -513,13 +509,13 @@ export class AuthService {
     const recentHashes = [
       user.passwordHash,
       ...(user.passwordHistory ?? []),
-    ].slice(0, PASSWORD_HISTORY_LIMIT);
+    ].slice(0, this.passwordHistoryLength);
     for (const hash of recentHashes) {
       if (await verifyPassword(newPassword, hash)) {
         throw new BadRequestException(
           JSON.stringify({
             code: ErrorCode.AUTH_PASSWORD_REUSE,
-            message: `Cannot reuse any of your last ${PASSWORD_HISTORY_LIMIT} passwords`,
+            message: `Cannot reuse any of your last ${this.passwordHistoryLength} passwords`,
           }),
         );
       }
@@ -529,7 +525,7 @@ export class AuthService {
     user.passwordHistory = [
       user.passwordHash,
       ...(user.passwordHistory ?? []),
-    ].slice(0, PASSWORD_HISTORY_LIMIT);
+    ].slice(0, this.passwordHistoryLength);
     user.passwordHash = newHash;
     await this.userRepository.save(user);
 
