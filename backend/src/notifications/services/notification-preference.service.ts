@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { PolicyCenterService } from '../../policy-center/policy-center.service';
 import {
   NotificationPreference,
   NotificationChannel,
@@ -19,6 +20,7 @@ export class NotificationPreferenceService {
     private preferenceRepo: Repository<NotificationPreference>,
     @InjectRepository(NotificationDeliveryLog)
     private deliveryLogRepo: Repository<NotificationDeliveryLog>,
+    private readonly policyCenterService: PolicyCenterService,
   ) {}
 
   async getUserPreferences(userId: string): Promise<NotificationPreference[]> {
@@ -39,30 +41,42 @@ export class NotificationPreferenceService {
     userId: string,
     category: NotificationCategory,
     channels: NotificationChannel[],
-    quietHoursEnabled: boolean = false,
+    quietHoursEnabled?: boolean,
     quietHoursStart?: string,
     quietHoursEnd?: string,
-    emergencyBypassTier: EmergencyTier = EmergencyTier.NORMAL,
+    emergencyBypassTier?: EmergencyTier,
   ): Promise<NotificationPreference> {
+    const policy = await this.policyCenterService.getActivePolicySnapshot();
+    const defaults = policy.rules.notification;
+
     let preference = await this.preferenceRepo.findOne({
       where: { userId, category },
     });
 
+    const resolvedQuietHoursEnabled =
+      quietHoursEnabled ?? defaults.defaultQuietHoursEnabled;
+    const resolvedQuietHoursStart =
+      quietHoursStart ?? defaults.defaultQuietHoursStart;
+    const resolvedQuietHoursEnd =
+      quietHoursEnd ?? defaults.defaultQuietHoursEnd;
+    const resolvedEmergencyBypassTier =
+      emergencyBypassTier ?? (defaults.defaultEmergencyBypassTier as EmergencyTier);
+
     if (preference) {
       preference.channels = channels;
-      preference.quietHoursEnabled = quietHoursEnabled;
-      preference.quietHoursStart = quietHoursStart;
-      preference.quietHoursEnd = quietHoursEnd;
-      preference.emergencyBypassTier = emergencyBypassTier;
+      preference.quietHoursEnabled = resolvedQuietHoursEnabled;
+      preference.quietHoursStart = resolvedQuietHoursStart;
+      preference.quietHoursEnd = resolvedQuietHoursEnd;
+      preference.emergencyBypassTier = resolvedEmergencyBypassTier;
     } else {
       preference = this.preferenceRepo.create({
         userId,
         category,
         channels,
-        quietHoursEnabled,
-        quietHoursStart,
-        quietHoursEnd,
-        emergencyBypassTier,
+        quietHoursEnabled: resolvedQuietHoursEnabled,
+        quietHoursStart: resolvedQuietHoursStart,
+        quietHoursEnd: resolvedQuietHoursEnd,
+        emergencyBypassTier: resolvedEmergencyBypassTier,
       });
     }
 
@@ -74,7 +88,13 @@ export class NotificationPreferenceService {
     category: NotificationCategory,
     channel: NotificationChannel,
     emergencyTier: EmergencyTier = EmergencyTier.NORMAL,
-  ): Promise<{ shouldSend: boolean; reason?: string; emergencyBypass: boolean }> {
+  ): Promise<{
+    shouldSend: boolean;
+    reason?: string;
+    emergencyBypass: boolean;
+    policyVersionRef?: string;
+  }> {
+    const policy = await this.policyCenterService.getActivePolicySnapshot();
     const preference = await this.preferenceRepo.findOne({
       where: { userId, category },
     });
@@ -84,6 +104,7 @@ export class NotificationPreferenceService {
         shouldSend: false,
         reason: 'Category disabled or no preference set',
         emergencyBypass: false,
+        policyVersionRef: policy.policyVersionId,
       };
     }
 
@@ -92,6 +113,7 @@ export class NotificationPreferenceService {
         shouldSend: false,
         reason: 'Channel not enabled for this category',
         emergencyBypass: false,
+        policyVersionRef: policy.policyVersionId,
       };
     }
 
@@ -103,6 +125,7 @@ export class NotificationPreferenceService {
           shouldSend: true,
           reason: 'Emergency bypass of quiet hours',
           emergencyBypass: true,
+          policyVersionRef: policy.policyVersionId,
         };
       }
 
@@ -110,10 +133,15 @@ export class NotificationPreferenceService {
         shouldSend: false,
         reason: 'Within quiet hours',
         emergencyBypass: false,
+        policyVersionRef: policy.policyVersionId,
       };
     }
 
-    return { shouldSend: true, emergencyBypass: false };
+    return {
+      shouldSend: true,
+      emergencyBypass: false,
+      policyVersionRef: policy.policyVersionId,
+    };
   }
 
   private isInQuietHours(preference: NotificationPreference): boolean {
@@ -156,6 +184,7 @@ export class NotificationPreferenceService {
     reason?: string,
     emergencyBypass: boolean = false,
     metadata?: Record<string, any>,
+    policyVersionRef?: string,
   ): Promise<NotificationDeliveryLog> {
     const log = this.deliveryLogRepo.create({
       userId,
@@ -165,6 +194,7 @@ export class NotificationPreferenceService {
       reason,
       emergencyBypass,
       metadata,
+      policyVersionRef: policyVersionRef ?? null,
     });
 
     return this.deliveryLogRepo.save(log);

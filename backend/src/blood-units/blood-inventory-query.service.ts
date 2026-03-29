@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository, SelectQueryBuilder } from 'typeorm';
+import { PolicyCenterService } from '../policy-center/policy-center.service';
 
 import {
   InventorySortField,
@@ -22,6 +23,7 @@ export interface InventoryStatistics {
   byBloodType: Record<string, number>;
   byComponent: Record<string, number>;
   totalVolumeMl: number;
+  policyVersionRef?: string;
 }
 
 export interface AvailabilityResult {
@@ -37,6 +39,7 @@ export class BloodInventoryQueryService {
   constructor(
     @InjectRepository(BloodUnit)
     private readonly bloodUnitRepository: Repository<BloodUnit>,
+    private readonly policyCenterService: PolicyCenterService,
   ) {}
 
   async query(dto: QueryBloodInventoryDto): Promise<{
@@ -75,8 +78,11 @@ export class BloodInventoryQueryService {
   }
 
   async getStatistics(bankId?: string): Promise<InventoryStatistics> {
+    const policy = await this.policyCenterService.getActivePolicySnapshot();
     const now = new Date();
-    const soonThreshold = new Date(now.getTime() + 72 * 60 * 60 * 1000); // 72 hours
+    const soonThreshold = new Date(
+      now.getTime() + policy.rules.inventory.expiringSoonHours * 60 * 60 * 1000,
+    );
 
     const qb = this.bloodUnitRepository.createQueryBuilder('u');
     if (bankId) {
@@ -123,6 +129,7 @@ export class BloodInventoryQueryService {
       byBloodType,
       byComponent,
       totalVolumeMl,
+      policyVersionRef: policy.policyVersionId,
     };
   }
 

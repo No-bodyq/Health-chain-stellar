@@ -34,6 +34,7 @@ import { UserActivityModule } from './user-activity/user-activity.module';
 import { UsersModule } from './users/users.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { TransparencyModule } from './transparency/transparency.module';
+import { PolicyCenterModule } from './policy-center/policy-center.module';
 
 import type Redis from 'ioredis';
 
@@ -77,6 +78,7 @@ import type Redis from 'ioredis';
     HospitalsModule,
     MapsModule,
     TransparencyModule,
+    PolicyCenterModule,
   ],
   controllers: [AppController],
   providers: [

@@ -52,4 +52,14 @@ export const queryKeys = {
       ["quarantine", "list", params] as const,
     detail: (id: string) => ["quarantine", "detail", id] as const,
   },
+
+  policyCenter: {
+    all: ["policyCenter"] as const,
+    versions: (policyName?: string) =>
+      ["policyCenter", "versions", policyName ?? "operational-core"] as const,
+    active: (policyName?: string) =>
+      ["policyCenter", "active", policyName ?? "operational-core"] as const,
+    compare: (fromVersionId: string, toVersionId: string) =>
+      ["policyCenter", "compare", fromVersionId, toVersionId] as const,
+  },
 } as const;

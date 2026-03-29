@@ -4,6 +4,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 
 import { OrderConfirmedEvent, OrderRiderAssignedEvent } from '../events';
 import { MapsService } from '../maps/maps.service';
+import { PolicyCenterService } from '../policy-center/policy-center.service';
 import { RiderRecord, RidersService } from '../riders/riders.service';
 
 @Injectable()
@@ -12,20 +13,21 @@ export class RiderAssignmentService {
   private readonly processedEvents = new Set<string>();
   private readonly assignmentLogs: AssignmentLog[] = [];
   private readonly activeAssignments = new Map<string, ActiveAssignmentState>();
-  private readonly acceptanceTimeoutMs: number;
-  private readonly weights: AssignmentWeights;
+  private readonly defaultAcceptanceTimeoutMs: number;
+  private readonly defaultWeights: AssignmentWeights;
 
   constructor(
     private readonly ridersService: RidersService,
     private readonly mapsService: MapsService,
     private readonly eventEmitter: EventEmitter2,
     private readonly configService: ConfigService,
+    private readonly policyCenterService: PolicyCenterService,
   ) {
-    this.acceptanceTimeoutMs = this.configService.get<number>(
+    this.defaultAcceptanceTimeoutMs = this.configService.get<number>(
       'ASSIGNMENT_ACCEPTANCE_TIMEOUT_MS',
       180000,
     );
-    this.weights = this.resolveWeights();
+    this.defaultWeights = this.resolveWeights();
   }
 
   @OnEvent('order.confirmed')
@@ -98,6 +100,7 @@ export class RiderAssignmentService {
         status: 'accepted',
         attemptNumber: assignment.currentIndex + 1,
         candidates: assignment.candidates.map((item) => item.score),
+        weights: assignment.weights,
         reason: 'rider_accepted',
       });
       this.activeAssignments.delete(orderId);
@@ -118,6 +121,7 @@ export class RiderAssignmentService {
       status: 'rejected',
       attemptNumber: assignment.currentIndex + 1,
       candidates: assignment.candidates.map((item) => item.score),
+      weights: assignment.weights,
       reason: 'rider_rejected',
     });
 
@@ -217,13 +221,15 @@ export class RiderAssignmentService {
         status: 'exhausted',
         attemptNumber: 0,
         candidates: [],
+        weights: this.defaultWeights,
         reason: 'no_available_riders',
       });
       return;
     }
 
     const pickupPoint = event.deliveryAddress;
-    const scored = await this.scoreRiders(riders, pickupPoint);
+    const policyConfig = await this.getRuntimeAssignmentConfig();
+    const scored = await this.scoreRiders(riders, pickupPoint, policyConfig.weights);
     const ranked = scored.sort(
       (a, b) => b.score.totalScore - a.score.totalScore,
     );
@@ -232,7 +238,8 @@ export class RiderAssignmentService {
       orderId: event.orderId,
       candidates: ranked,
       currentIndex: 0,
-      timeoutMs: this.acceptanceTimeoutMs,
+      timeoutMs: policyConfig.acceptanceTimeoutMs,
+      weights: policyConfig.weights,
       timer: null,
     };
     this.activeAssignments.set(event.orderId, state);
@@ -243,6 +250,7 @@ export class RiderAssignmentService {
   private async scoreRiders(
     riders: RiderRecord[],
     pickupPoint: string,
+    weights: AssignmentWeights,
   ): Promise<Array<{ rider: RiderRecord; score: AssignmentCandidateScore }>> {
     const raw = await Promise.all(
       riders.map(async (rider) => {
@@ -292,9 +300,9 @@ export class RiderAssignmentService {
       );
 
       const totalScore =
-        distanceScore * this.weights.distance +
-        workloadScore * this.weights.workload +
-        ratingScore * this.weights.rating;
+        distanceScore * weights.distance +
+        workloadScore * weights.workload +
+        ratingScore * weights.rating;
 
       return {
         rider: item.rider,
@@ -346,6 +354,7 @@ export class RiderAssignmentService {
         status: 'exhausted',
         attemptNumber: assignment.currentIndex,
         candidates: assignment.candidates.map((item) => item.score),
+        weights: assignment.weights,
         reason: 'all_candidates_exhausted',
       });
       this.activeAssignments.delete(assignment.orderId);
@@ -358,6 +367,7 @@ export class RiderAssignmentService {
       status: 'pending',
       attemptNumber: assignment.currentIndex + 1,
       candidates: assignment.candidates.map((item) => item.score),
+      weights: assignment.weights,
       reason,
     });
 
@@ -389,6 +399,7 @@ export class RiderAssignmentService {
       status: reason === 'timeout' ? 'timeout' : 'escalated',
       attemptNumber: assignment.currentIndex + 1,
       candidates: assignment.candidates.map((item) => item.score),
+      weights: assignment.weights,
       reason,
     });
 
@@ -400,6 +411,7 @@ export class RiderAssignmentService {
         status: 'exhausted',
         attemptNumber: assignment.currentIndex,
         candidates: assignment.candidates.map((item) => item.score),
+        weights: assignment.weights,
         reason: 'all_candidates_exhausted',
       });
       this.activeAssignments.delete(orderId);
@@ -417,14 +429,47 @@ export class RiderAssignmentService {
   }
 
   private appendAssignmentLog(
-    log: Omit<AssignmentLog, 'id' | 'createdAt' | 'weights'>,
+    log: Omit<AssignmentLog, 'id' | 'createdAt'>,
   ): void {
     this.assignmentLogs.push({
       id: `assignment-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       createdAt: new Date(),
-      weights: this.weights,
       ...log,
     });
+  }
+
+  private async getRuntimeAssignmentConfig(): Promise<{
+    acceptanceTimeoutMs: number;
+    weights: AssignmentWeights;
+  }> {
+    try {
+      const policy = await this.policyCenterService.getActivePolicySnapshot();
+      const totalWeight =
+        policy.rules.dispatch.distanceWeight +
+        policy.rules.dispatch.workloadWeight +
+        policy.rules.dispatch.ratingWeight;
+
+      if (totalWeight <= 0) {
+        return {
+          acceptanceTimeoutMs: this.defaultAcceptanceTimeoutMs,
+          weights: this.defaultWeights,
+        };
+      }
+
+      return {
+        acceptanceTimeoutMs: policy.rules.dispatch.acceptanceTimeoutMs,
+        weights: {
+          distance: policy.rules.dispatch.distanceWeight / totalWeight,
+          workload: policy.rules.dispatch.workloadWeight / totalWeight,
+          rating: policy.rules.dispatch.ratingWeight / totalWeight,
+        },
+      };
+    } catch {
+      return {
+        acceptanceTimeoutMs: this.defaultAcceptanceTimeoutMs,
+        weights: this.defaultWeights,
+      };
+    }
   }
 }
 
@@ -479,5 +524,6 @@ interface ActiveAssignmentState {
   candidates: Array<{ rider: RiderRecord; score: AssignmentCandidateScore }>;
   currentIndex: number;
   timeoutMs: number;
+  weights: AssignmentWeights;
   timer: NodeJS.Timeout | null;
 }
