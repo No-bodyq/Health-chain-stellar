@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { MapsModule } from '../maps/maps.module';
+import { PolicyCenterModule } from '../policy-center/policy-center.module';
 import { RidersModule } from '../riders/riders.module';
 
 import { DispatchController } from './dispatch.controller';
@@ -15,6 +16,7 @@ import { RiderAssignmentService } from './rider-assignment.service';
     EventEmitterModule.forRoot(),
     RidersModule,
     MapsModule,
+    PolicyCenterModule,
   ],
   controllers: [DispatchController],
   providers: [DispatchService, RiderAssignmentService],

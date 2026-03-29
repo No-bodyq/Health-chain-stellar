@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { PolicyCenterService } from '../../policy-center/policy-center.service';
 import { ReputationEntity } from '../../reputation/entities/reputation.entity';
 import { RiderEntity } from '../entities/rider.entity';
 import { AssignmentWeightsEntity } from '../entities/assignment-weights.entity';
@@ -26,6 +27,7 @@ export class ReputationAwareAssignmentService {
     private readonly weightsRepo: Repository<AssignmentWeightsEntity>,
     @InjectRepository(AssignmentDecisionEntity)
     private readonly decisionRepo: Repository<AssignmentDecisionEntity>,
+    private readonly policyCenterService: PolicyCenterService,
   ) {}
 
   async assignRider(params: {
@@ -34,6 +36,7 @@ export class ReputationAwareAssignmentService {
     pickupLon: number;
     maxCandidates?: number;
   }): Promise<{ selectedRiderId: string; explanation: ScoredCandidate[] }> {
+    const policy = await this.policyCenterService.getActivePolicySnapshot();
     const weights = await this.getActiveWeights();
     const riders = await this.riderRepo.find({
       where: { status: RiderStatus.AVAILABLE, isVerified: true },
@@ -97,6 +100,7 @@ export class ReputationAwareAssignmentService {
           coldChainWeight: weights.coldChainWeight,
         },
         candidates: scored.map((c) => ({ riderId: c.riderId, totalScore: c.totalScore, breakdown: c.breakdown })),
+        policyVersionRef: policy.policyVersionId,
       }),
     );
 
@@ -110,9 +114,10 @@ export class ReputationAwareAssignmentService {
   async getActiveWeights(): Promise<AssignmentWeightsEntity> {
     let w = await this.weightsRepo.findOne({ where: { name: 'default', isActive: true } });
     if (!w) {
+      const policy = await this.policyCenterService.getActivePolicySnapshot();
       w = this.weightsRepo.create({
         name: 'default',
-        distanceWeight: 0.3,
+        distanceWeight: policy.rules.dispatch.distanceWeight,
         reputationWeight: 0.25,
         rejectionRateWeight: 0.2,
         completionRateWeight: 0.15,

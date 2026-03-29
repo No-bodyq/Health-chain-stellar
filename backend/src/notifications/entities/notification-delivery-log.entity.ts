@@ -50,6 +50,9 @@ export class NotificationDeliveryLog {
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
 
+  @Column({ name: 'policy_version_ref', nullable: true })
+  policyVersionRef: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

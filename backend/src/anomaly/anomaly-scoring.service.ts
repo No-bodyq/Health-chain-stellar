@@ -6,6 +6,7 @@ import { Repository, MoreThan } from 'typeorm';
 import { BloodRequestEntity, Urgency } from '../../blood-requests/entities/blood-request.entity';
 import { OrderEntity } from '../../orders/entities/order.entity';
 import { OrderStatus } from '../../orders/enums/order-status.enum';
+import { PolicyCenterService } from '../../policy-center/policy-center.service';
 import { AnomalyIncidentEntity } from '../entities/anomaly-incident.entity';
 import {
   AnomalyType,
@@ -24,23 +25,31 @@ export class AnomalyScoringService {
     private readonly requestRepo: Repository<BloodRequestEntity>,
     @InjectRepository(OrderEntity)
     private readonly orderRepo: Repository<OrderEntity>,
+    private readonly policyCenterService: PolicyCenterService,
   ) {}
 
   /** Run full scoring pipeline every 30 minutes */
   @Cron(CronExpression.EVERY_30_MINUTES)
   async runPipeline(): Promise<void> {
     this.logger.log('Running anomaly scoring pipeline');
+
+    const policy = await this.policyCenterService.getActivePolicySnapshot();
     await Promise.all([
-      this.detectDuplicateEmergencyRequests(),
-      this.detectRepeatedEscrowDisputes(),
-      this.detectSuddenStockSwings(),
-      this.detectHighRiderCancellations(),
+      this.detectDuplicateEmergencyRequests(policy.rules.anomaly, policy.policyVersionId),
+      this.detectRepeatedEscrowDisputes(policy.rules.anomaly, policy.policyVersionId),
+      this.detectSuddenStockSwings(policy.rules.anomaly, policy.policyVersionId),
+      this.detectHighRiderCancellations(policy.rules.anomaly, policy.policyVersionId),
     ]);
   }
 
   // ─── Rule 1: Same-day duplicate emergency requests per hospital ───────────
 
-  private async detectDuplicateEmergencyRequests(): Promise<void> {
+  private async detectDuplicateEmergencyRequests(
+    rules: {
+      duplicateEmergencyMinCount: number;
+    },
+    policyVersionRef: string,
+  ): Promise<void> {
     const since = new Date();
     since.setHours(0, 0, 0, 0);
     const sinceMs = since.getTime();
@@ -52,7 +61,9 @@ export class AnomalyScoringService {
       .where('r.urgency = :urgency', { urgency: Urgency.CRITICAL })
       .andWhere('r.created_timestamp >= :since', { since: sinceMs })
       .groupBy('r.hospital_id')
-      .having('COUNT(*) >= :threshold', { threshold: 3 })
+      .having('COUNT(*) >= :threshold', {
+        threshold: rules.duplicateEmergencyMinCount,
+      })
       .getRawMany();
 
     for (const row of rows) {
@@ -62,13 +73,20 @@ export class AnomalyScoringService {
         hospitalId: row.hospitalId,
         description: `Hospital ${row.hospitalId} submitted ${row.count} CRITICAL blood requests today.`,
         metadata: { count: row.count, date: since.toISOString() },
+        policyVersionRef,
       });
     }
   }
 
   // ─── Rule 2: Riders with high cancellation ratio ──────────────────────────
 
-  private async detectHighRiderCancellations(): Promise<void> {
+  private async detectHighRiderCancellations(
+    rules: {
+      riderMinOrders: number;
+      riderCancellationRatioThreshold: number;
+    },
+    policyVersionRef: string,
+  ): Promise<void> {
     const rows: { riderId: string; cancelled: string; total: string }[] =
       await this.orderRepo
         .createQueryBuilder('o')
@@ -80,9 +98,12 @@ export class AnomalyScoringService {
         .addSelect('COUNT(*)', 'total')
         .where('o.rider_id IS NOT NULL')
         .groupBy('o.rider_id')
-        .having('COUNT(*) >= 5')
+        .having('COUNT(*) >= :minOrders', {
+          minOrders: rules.riderMinOrders,
+        })
         .andHaving(
-          `SUM(CASE WHEN o.status = '${OrderStatus.CANCELLED}' THEN 1 ELSE 0 END)::float / COUNT(*) >= 0.4`,
+          `SUM(CASE WHEN o.status = '${OrderStatus.CANCELLED}' THEN 1 ELSE 0 END)::float / COUNT(*) >= :threshold`,
+          { threshold: rules.riderCancellationRatioThreshold },
         )
         .getRawMany();
 
@@ -94,20 +115,28 @@ export class AnomalyScoringService {
         riderId: row.riderId,
         description: `Rider ${row.riderId} has a ${ratio.toFixed(0)}% cancellation rate (${row.cancelled}/${row.total} orders).`,
         metadata: { cancelled: row.cancelled, total: row.total },
+        policyVersionRef,
       });
     }
   }
 
   // ─── Rule 3: Repeated escrow disputes per order ───────────────────────────
 
-  private async detectRepeatedEscrowDisputes(): Promise<void> {
+  private async detectRepeatedEscrowDisputes(
+    rules: {
+      disputeCountThreshold: number;
+    },
+    policyVersionRef: string,
+  ): Promise<void> {
     const rows: { hospitalId: string; count: string }[] = await this.orderRepo
       .createQueryBuilder('o')
       .select('o.hospital_id', 'hospitalId')
       .addSelect('COUNT(*)', 'count')
       .where('o.dispute_id IS NOT NULL')
       .groupBy('o.hospital_id')
-      .having('COUNT(*) >= 3')
+      .having('COUNT(*) >= :threshold', {
+        threshold: rules.disputeCountThreshold,
+      })
       .getRawMany();
 
     for (const row of rows) {
@@ -117,14 +146,21 @@ export class AnomalyScoringService {
         hospitalId: row.hospitalId,
         description: `Hospital ${row.hospitalId} has ${row.count} disputed orders.`,
         metadata: { disputeCount: row.count },
+        policyVersionRef,
       });
     }
   }
 
   // ─── Rule 4: Sudden stock swing (many orders in short window) ─────────────
 
-  private async detectSuddenStockSwings(): Promise<void> {
-    const since = new Date(Date.now() - 60 * 60 * 1000); // last 1 hour
+  private async detectSuddenStockSwings(
+    rules: {
+      stockSwingWindowMinutes: number;
+      stockSwingMinOrders: number;
+    },
+    policyVersionRef: string,
+  ): Promise<void> {
+    const since = new Date(Date.now() - rules.stockSwingWindowMinutes * 60 * 1000);
 
     const rows: { bloodType: string; count: string }[] = await this.orderRepo
       .createQueryBuilder('o')
@@ -132,15 +168,18 @@ export class AnomalyScoringService {
       .addSelect('COUNT(*)', 'count')
       .where('o.created_at >= :since', { since })
       .groupBy('o.blood_type')
-      .having('COUNT(*) >= 10')
+      .having('COUNT(*) >= :threshold', {
+        threshold: rules.stockSwingMinOrders,
+      })
       .getRawMany();
 
     for (const row of rows) {
       await this.upsertAnomaly({
         type: AnomalyType.SUDDEN_STOCK_SWING,
         severity: AnomalySeverity.MEDIUM,
-        description: `${row.count} orders for blood type ${row.bloodType} placed in the last hour.`,
+        description: `${row.count} orders for blood type ${row.bloodType} placed in the last ${rules.stockSwingWindowMinutes} minutes.`,
         metadata: { bloodType: row.bloodType, count: row.count, windowStart: since.toISOString() },
+        policyVersionRef,
       });
     }
   }
@@ -156,6 +195,7 @@ export class AnomalyScoringService {
     riderId?: string;
     hospitalId?: string;
     bloodRequestId?: string;
+    policyVersionRef?: string;
   }): Promise<void> {
     // Avoid duplicate open incidents for the same subject on the same day
     const today = new Date();
@@ -176,6 +216,7 @@ export class AnomalyScoringService {
         description: data.description,
         metadata: data.metadata ?? null,
         severity: data.severity,
+        policyVersionRef: data.policyVersionRef ?? null,
       });
       return;
     }
@@ -188,6 +229,7 @@ export class AnomalyScoringService {
         riderId: data.riderId ?? null,
         hospitalId: data.hospitalId ?? null,
         bloodRequestId: data.bloodRequestId ?? null,
+        policyVersionRef: data.policyVersionRef ?? null,
       }),
     );
   }

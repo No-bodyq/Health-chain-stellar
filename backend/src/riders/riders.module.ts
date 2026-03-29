@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ReputationEntity } from '../reputation/entities/reputation.entity';
 import { ReputationModule } from '../reputation/reputation.module';
+import { PolicyCenterModule } from '../policy-center/policy-center.module';
 
 import { AssignmentDecisionEntity } from './entities/assignment-decision.entity';
 import { AssignmentWeightsEntity } from './entities/assignment-weights.entity';
@@ -16,6 +17,7 @@ import { ReputationAwareAssignmentService } from './services/reputation-aware-as
   imports: [
     TypeOrmModule.forFeature([RiderEntity, AssignmentWeightsEntity, AssignmentDecisionEntity, ReputationEntity]),
     ReputationModule,
+    PolicyCenterModule,
   ],
   controllers: [RidersController, AssignmentController],
   providers: [RidersService, ReputationAwareAssignmentService],

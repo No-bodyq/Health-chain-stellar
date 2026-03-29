@@ -46,6 +46,9 @@ export class AnomalyIncidentEntity {
   @Column({ name: 'blood_request_id', type: 'varchar', nullable: true })
   bloodRequestId: string | null;
 
+  @Column({ name: 'policy_version_ref', type: 'varchar', nullable: true })
+  policyVersionRef: string | null;
+
   /** Raw evidence snapshot */
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, unknown> | null;

@@ -15,4 +15,7 @@ export class AssignmentDecisionEntity extends BaseEntity {
 
   @Column({ name: 'candidates', type: 'jsonb' })
   candidates: Array<{ riderId: string; totalScore: number; breakdown: Record<string, number> }>;
+
+  @Column({ name: 'policy_version_ref', nullable: true })
+  policyVersionRef: string | null;
 }
